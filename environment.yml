@@ -1,0 +1,6 @@
+name: prisa
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - nodejs=22

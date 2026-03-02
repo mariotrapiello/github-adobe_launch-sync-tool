@@ -12,14 +12,24 @@ Fork of [adobe/reactor-sync](https://github.com/adobe/reactor-sync) with the fol
 
 ## Prerequisites
 
-- Conda environment `prisa` with Node.js 22 (`conda activate prisa`)
+- [Conda](https://docs.conda.io/en/latest/miniconda.html) (Miniconda or Anaconda)
 - An Adobe Developer Console project with **OAuth Server-to-Server** credentials and the Experience Platform Launch API added
 
 ---
 
 ## One-time setup
 
-### 1. Get credentials from Adobe Developer Console
+### 1. Create the Conda environment
+
+```bash
+conda env create -f environment.yml
+conda activate prisa
+npm install
+```
+
+This creates the `prisa` environment with Node.js 22 and installs all npm dependencies. All subsequent commands must run inside `conda activate prisa`.
+
+### 2. Get credentials from Adobe Developer Console
 
 1. Go to https://developer.adobe.com/console
 2. Open your project (or create one and add the Experience Platform Launch API)
@@ -27,7 +37,7 @@ Fork of [adobe/reactor-sync](https://github.com/adobe/reactor-sync) with the fol
 4. Assign product profiles that have Tags/Launch access
 5. Copy **Client ID**, **Client Secret**, and **Organization ID** from the credential overview
 
-### 2. Create `integration.json` (never commit this file)
+### 3. Create `integration.json` (never commit this file)
 
 The repo already contains `integration.config.json` (committed) with the non-sensitive configuration (scopes). You only need to create `integration.json` with your credentials:
 
@@ -43,12 +53,14 @@ EOF
 
 `integration.json` is gitignored — do not commit it. The scopes are in `integration.config.json` and are applied automatically.
 
-### 3. Create the per-property settings file (never commit this file)
+### 4. Create the per-property settings file (never commit this file)
 
-For each property you want to work with:
+The repo includes example properties (`property1`, `property2`, ...) — rename them to whatever makes sense for your team (e.g. `web-prod`, `mobile-staging`). The folder name is free — it is only used as a human-readable label.
+
+For each property you want to work with, copy its example settings file:
 
 ```bash
-cp properties/web-prod/reactor-settings.example.json properties/web-prod/.reactor-settings.json
+cp properties/property1/reactor-settings.example.json properties/property1/.reactor-settings.json
 ```
 
 The example file already contains the correct `propertyId` for that property. The `.reactor-settings.json` is gitignored.
@@ -62,10 +74,10 @@ All commands run from the **repo root** inside `conda activate prisa`.
 ### Pull — download Launch → local files
 
 ```bash
-node bin/index.js pull --settings-path ./properties/web-prod/.reactor-settings.json
+node bin/index.js pull --settings-path ./properties/property1/.reactor-settings.json
 ```
 
-Creates (or updates) `properties/web-prod/<propertyId>/` with:
+Creates (or updates) `properties/property1/<propertyId>/` with:
 
 ```
 <propertyId>/
@@ -91,7 +103,7 @@ Creates (or updates) `properties/web-prod/<propertyId>/` with:
 ### Diff — preview what would change
 
 ```bash
-node bin/index.js diff --settings-path ./properties/web-prod/.reactor-settings.json
+node bin/index.js diff --settings-path ./properties/property1/.reactor-settings.json
 ```
 
 Output categories:
@@ -107,7 +119,7 @@ Output categories:
 ### Sync — push local changes to Launch
 
 ```bash
-node bin/index.js sync --settings-path ./properties/web-prod/.reactor-settings.json
+node bin/index.js sync --settings-path ./properties/property1/.reactor-settings.json
 ```
 
 Pushes **Modified** items to Launch and pulls **Behind** items back down.
@@ -121,14 +133,26 @@ After sync, **publishing to an environment is a manual step** in the Launch UI:
 
 | File | When to edit |
 |------|-------------|
-| `settings.source.js` | Custom JavaScript for **data elements** (e.g. a Custom Code data element) |
-| `settings.customCode.js` | Custom JavaScript for **rule components** (e.g. a Custom Code action) |
-| `settings.json` | Non-code configuration (extension-specific settings, flags, field values) |
-| `data.json` | **Never edit** — this is the raw API snapshot and is overwritten on every pull |
+| `settings.source.js` | Custom JavaScript for **data elements** (Custom Code type). **This is the authoritative source for the code field.** |
+| `settings.customCode.js` | Custom JavaScript for **rule components** (Custom Code actions/conditions). **This is the authoritative source for the code field.** |
+| `settings.json` | Non-code configuration fields only — see rule below |
+| `data.json` | **Never edit** — raw API snapshot, overwritten on every pull |
+
+### When both `settings.json` and a `.js` file exist
+
+This happens with Custom Code data elements and rule components. The relationship is:
+
+- `settings.source.js` (or `settings.customCode.js`) **always wins** over its corresponding field in `settings.json`. When `diff`/`sync` runs, it reads the `.js` file and injects its content into the settings object, overwriting whatever `settings.json` says for that field.
+- As a result, **editing the code field inside `settings.json` has no effect** — it will be silently overwritten by the `.js` file.
+- **Only edit `settings.json`** when it contains fields that have no corresponding `.js` file (e.g. a timeout, a flag, a non-code value specific to that extension).
+
+**Rule of thumb:**
+- Has a `settings.source.js` or `settings.customCode.js`? → edit the **`.js` file** for code changes, ignore the `source`/`customCode` field in `settings.json`.
+- Only has `settings.json`? → edit `settings.json` directly for any change.
 
 **Editing flow:**
-1. Edit `settings.source.js` or `settings.customCode.js` (or `settings.json` for config changes)
-2. Run `diff` to verify the change is detected as **Modified**
+1. Edit the right file (`.js` for code, `settings.json` for non-code fields without a `.js` counterpart)
+2. Run `diff` to verify the change appears as **Modified**
 3. Run `sync` to push to Launch
 4. Publish in the Launch UI
 
@@ -136,12 +160,14 @@ After sync, **publishing to an environment is a manual step** in the Launch UI:
 
 ## Working with multiple properties
 
-### Use an existing property
+The folder name under `properties/` is just a label — use whatever name is meaningful to your team (`web-prod`, `mobile-staging`, `client-x`, etc.).
+
+### Use an existing property from the repo
 
 ```bash
-cp properties/web-prod/reactor-settings.example.json properties/<name>/.reactor-settings.json
+cp properties/property1/reactor-settings.example.json properties/property1/.reactor-settings.json
 # the example already has the correct propertyId — no edits needed
-node bin/index.js pull --settings-path ./properties/<name>/.reactor-settings.json
+node bin/index.js pull --settings-path ./properties/property1/.reactor-settings.json
 ```
 
 ### Add a new property

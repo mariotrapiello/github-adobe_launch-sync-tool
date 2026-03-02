@@ -229,6 +229,11 @@ ${value}
               `${localPath}/settings.${transform.propertyPath}.js`,
               value
             );
+
+          // remove: field is intentionally not written to disk
+          } else if (transform.type === 'remove') {
+            // no-op
+
           } else {
             console.error('unrecognized transform');
             console.log(transform);
