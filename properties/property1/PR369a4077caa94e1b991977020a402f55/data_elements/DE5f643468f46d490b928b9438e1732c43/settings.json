@@ -3,7 +3,7 @@
     {
       "id": "%Profile Id%",
       "primary": false,
-      "authenticatedState": "authenticated"
+      "authenticatedState": "ambiguous"
     }
   ]
 }
