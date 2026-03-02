@@ -6,7 +6,7 @@ return {
     {
       id: _satellite.getVar("ECID"),
       authenticatedState: "ambiguous",
-      primary: false
+      primary: true
     }
   ],
   GPM:[

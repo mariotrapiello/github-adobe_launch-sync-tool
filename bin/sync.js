@@ -68,10 +68,17 @@ module.exports = async (args) => {
 
   if (args.ci) {
     if (result.behind.length > 0) {
-      console.error(`\nCI SYNC ABORTED: ${result.behind.length} resource(s) are Behind.`);
-      console.error('Launch has changes more recent than your local copy.');
-      console.error('Run pull locally, review, commit, then push again.\n');
-      result.behind.forEach((c) => console.error(`  - ${c.path} (${c.id})`));
+      console.error(`\nCI SYNC ABORTED: ${result.behind.length} resource(s) in Launch are newer than your local copy.`);
+      console.error('Someone may have edited these directly in the Launch UI after your last pull.\n');
+      console.error('Conflicting resources (pull these first):');
+      result.behind.forEach((c) => console.error(`  [BEHIND]   ${c.path}`));
+
+      if (result.modified.length > 0) {
+        console.error('\nThese local changes were NOT synced because of the conflict above:');
+        result.modified.forEach((c) => console.error(`  [BLOCKED]  ${c.path}`));
+      }
+
+      console.error('\nTo resolve: run pull locally, review the conflicting resources, commit, then push again.');
       process.exit(1);
     }
     if (result.modified.length === 0) {
