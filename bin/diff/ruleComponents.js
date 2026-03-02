@@ -30,8 +30,8 @@ module.exports = async (args, result) => {
   };
   const propertyId = args.propertyId;
   const reactor = args.reactor;
-
-  const propertyPath = `./${propertyId}`;
+  const base = args.baseDir || '.';
+  const propertyPath = `${base}/${propertyId}`;
   const ruleComponentsPath = `${propertyPath}/rule_components`;
 
   // get all of the local files
@@ -46,25 +46,15 @@ module.exports = async (args, result) => {
   ).data;
   // const ruleComponents = await property.getRuleComponents();
   let remotes = [];
-  let remotesPromises = [];
-  for (let rule of rules) {
-
-    remotesPromises.push(
-      reactor.listRuleComponentsForRule(rule.id, {
-        'page[size]': 999
-      })
-      .then((response) => {
-        remotes = remotes.concat(response.data);
-      })
-    );
-
-    // const tempRuleComponents = (
-    //   await reactor.listRuleComponentsForRule(rule.id, {
-    //     'page[size]': 999
-    //   })
-    // ).data;
-    // remotes = remotes.concat(tempRuleComponents);
-  }
+  // Await all rule component fetches before comparing — the original code
+  // pushed promises but never awaited them, causing a race condition where
+  // remotes was still empty/incomplete when the file loop ran.
+  await Promise.all(
+    rules.map((rule) =>
+      reactor.listRuleComponentsForRule(rule.id, { 'page[size]': 999 })
+        .then(({ data }) => { remotes = remotes.concat(data); })
+    )
+  );
 
   for (const file of files) {
 

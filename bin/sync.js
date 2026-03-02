@@ -31,13 +31,14 @@ async function updateExtension(reactor, local) {
 }
 
 async function updateResource(reactor, local) {
-  const resourceName = toMethodName(local.type);
+  // true = singular: data_elements → DataElement, rule_components → RuleComponent
+  const resourceName = toMethodName(local.type, true);
   const update = (await reactor[`update${resourceName}`]({
     id: local.id,
     type: local.type,
     attributes: local.attributes
   })).data;
-  maybeRevise(resourceName, reactor, local);
+  await maybeRevise(resourceName, reactor, local);
   return update;
 }
 
@@ -47,17 +48,44 @@ async function updateExtensionOr(reactor, local) {
 }
 
 async function maybeRevise(resourceName, reactor, local) {
-  if (resourceName === ('Extension' || 'DataElement'))
+  // Original had: resourceName === ('Extension' || 'DataElement')
+  // which always evaluated to resourceName === 'Extension' (JS OR short-circuit bug).
+  if (resourceName === 'Extension' || resourceName === 'DataElement')
     return await reactor[`revise${resourceName}`](local.id);
 }
 
 module.exports = async (args) => {
   const settings = checkArgs(args);
 
+  args.propertyId  = settings.propertyId;
+  args.environment = settings.environment;
+  args.integration = settings.integration;
+  args.baseDir     = settings.baseDir;
+
   settings.accessToken = await checkAccessToken(settings);
   const reactor = await getReactor(settings);
   const result = await diff(args);
-  // const shouldSyncSome = shouldSync(args);
+
+  if (args.ci) {
+    if (result.behind.length > 0) {
+      console.error(`\nCI SYNC ABORTED: ${result.behind.length} resource(s) are Behind.`);
+      console.error('Launch has changes more recent than your local copy.');
+      console.error('Run pull locally, review, commit, then push again.\n');
+      result.behind.forEach((c) => console.error(`  - ${c.path} (${c.id})`));
+      process.exit(1);
+    }
+    if (result.modified.length === 0) {
+      console.log('Nothing to sync.');
+      return;
+    }
+    console.log(`Syncing ${result.modified.length} modified resource(s)...`);
+    for (const comparison of result.modified) {
+      const local = await fromFile(comparison.path, args);
+      const updated = await updateExtensionOr(reactor, local);
+      await toFiles(updated, args);
+    }
+    return;
+  }
 
   // added
   // for (const comparison of result.added) {
@@ -91,7 +119,7 @@ module.exports = async (args) => {
     console.log('↩️  Syncing behind.');
 
     for (const comparison of result.behind) {
-      const resourceMethodName = toMethodName(comparison.type);
+      const resourceMethodName = toMethodName(comparison.type, true);
       const updated = (await reactor[`get${resourceMethodName}`](comparison.id)).data;
       
       await toFiles(updated, args); 

@@ -1,0 +1,16 @@
+{
+  "GPM": [
+    {
+      "id": "%Profile Id%",
+      "primary": false,
+      "authenticatedState": "ambiguous"
+    }
+  ],
+  "FPID": [
+    {
+      "id": "%FPID%",
+      "primary": true,
+      "authenticatedState": "ambiguous"
+    }
+  ]
+}

@@ -20,13 +20,13 @@ const pull = require('./pull');
 
 yargs
 .usage('Usage: $0 <command> [options]')
-// sync (default)
+// sync (default when no command given)
 .command(['sync', '$0'], 'Run a diff on the local file system and Adobe Launch and then sync.', async (argv) => {
   const args = argv.argv;
   await sync(args);
 })
-// pull (default)
-.command(['pull', '$0'], 'Pull down all resources and write them as JSON locally.', async (argv) => {
+// pull
+.command('pull', 'Pull down all resources and write them as JSON locally.', async (argv) => {
   const args = argv.argv;
   await pull(args);
 })
@@ -74,9 +74,9 @@ yargs
 })
 // options
 .options({
-  settings: {
+  'settings-path': {
     type: 'string',
-    describe: 'The location of the settings file.'
+    describe: 'The location of the .reactor-settings.json file (defaults to ./.reactor-settings.json).'
   }
 })
 .options({
@@ -89,6 +89,12 @@ yargs
   behind: {
     type: 'boolean',
     describe: '(sync command only) Sync only "behind" changes down from Launch.'
+  }
+})
+.options({
+  ci: {
+    type: 'boolean',
+    describe: '(sync command only) CI mode: abort with exit 1 if any resources are Behind in Launch.'
   }
 })
 // TODO: finish this when ready and public

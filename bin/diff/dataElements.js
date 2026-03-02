@@ -31,7 +31,8 @@ module.exports = async (args, result) => {
 
   const propertyId = args.propertyId;
   const reactor = args.reactor;
-  const propertyPath = `./${propertyId}`;
+  const base = args.baseDir || '.';
+  const propertyPath = `${base}/${propertyId}`;
   const dataElementsPath = `${propertyPath}/data_elements`;
 
   // get all of the local files

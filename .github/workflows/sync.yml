@@ -1,0 +1,82 @@
+name: Adobe Launch Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'properties/**'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. Detect which properties/<name>/ folders changed in this push
+  # ──────────────────────────────────────────────────────────────────────────
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      properties: ${{ steps.detect.outputs.properties }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed property folders
+        id: detect
+        run: |
+          CHANGED=$(
+            git diff --name-only HEAD~1 HEAD \
+              | grep '^properties/' \
+              | cut -d'/' -f2 \
+              | sort -u \
+              | jq -R -s 'split("\n") | map(select(length > 0))'
+          )
+          echo "properties=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Changed properties: $CHANGED"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. Sync each changed property to Adobe Launch
+  # ──────────────────────────────────────────────────────────────────────────
+  sync:
+    needs: detect
+    if: ${{ needs.detect.outputs.properties != '[]' && needs.detect.outputs.properties != '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        property: ${{ fromJSON(needs.detect.outputs.properties) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Build integration.json (sensitive credentials only — scopes come from integration.config.json)
+      - name: Write integration.json
+        run: |
+          jq -n \
+            --arg clientId "${{ secrets.ADOBE_CLIENT_ID }}" \
+            --arg clientSecret "${{ secrets.ADOBE_CLIENT_SECRET }}" \
+            --arg orgId "${{ secrets.ADOBE_ORG_ID }}" \
+            '{"clientId":$clientId,"clientSecret":$clientSecret,"orgId":$orgId}' \
+            > integration.json
+
+      # Copy the committed example file (which has the real propertyId) to the live settings file
+      - name: Write .reactor-settings.json
+        run: |
+          SETTINGS="properties/${{ matrix.property }}/reactor-settings.example.json"
+          if [ ! -f "$SETTINGS" ]; then
+            echo "ERROR: $SETTINGS not found. Add a reactor-settings.example.json to properties/${{ matrix.property }}/"
+            exit 1
+          fi
+          cp "$SETTINGS" "properties/${{ matrix.property }}/.reactor-settings.json"
+
+      # Sync — aborts with exit 1 if any resource is Behind (Launch is ahead of local)
+      - name: Sync to Adobe Launch
+        run: |
+          node bin/index.js sync \
+            --settings-path "./properties/${{ matrix.property }}/.reactor-settings.json" \
+            --ci

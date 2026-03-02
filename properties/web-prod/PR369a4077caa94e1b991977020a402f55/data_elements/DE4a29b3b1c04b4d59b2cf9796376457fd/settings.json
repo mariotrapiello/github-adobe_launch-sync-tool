@@ -1,0 +1,3 @@
+{
+  "source": "var dateString = new Date().toISOString();\n\nreturn {\n  collect: {\n    val: \"y\"\n  },\n  metadata: {\n    time: dateString\n  }\n}"
+}

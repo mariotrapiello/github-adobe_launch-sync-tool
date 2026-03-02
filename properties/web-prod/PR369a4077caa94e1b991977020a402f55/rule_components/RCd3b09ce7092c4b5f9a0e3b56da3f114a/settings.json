@@ -1,0 +1,10 @@
+{
+  "consent": [
+    {
+      "value": "%XDM - Consent 2.0%",
+      "version": "2.0",
+      "standard": "Adobe"
+    }
+  ],
+  "instanceName": "alloy"
+}

@@ -1,0 +1,12 @@
+{
+  "consent": [
+    {
+      "value": "%IAB TCF Consent String%",
+      "version": "2.0",
+      "standard": "IAB TCF",
+      "gdprApplies": "%IAB TCF Consent GDPR%",
+      "gdprContainsPersonalData": false
+    }
+  ],
+  "instanceName": "alloy"
+}

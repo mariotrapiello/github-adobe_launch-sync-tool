@@ -4,11 +4,13 @@ const ruleComponentsName = 'rule_components';
 const pages = { 'page[size]': 999 };
 
 function formArgs(resourceType, args) {
+  const base = args.baseDir || '.';
   return {
     propertyId: args.propertyId,
+    baseDir: args.baseDir,
     reactor: args.reactor,
-    propertyPath: `./${args.propertyId}`,
-    dataElementsPath: `${args.propertyId}/${resourceType}`
+    propertyPath: `${base}/${args.propertyId}`,
+    dataElementsPath: `${base}/${args.propertyId}/${resourceType}`
   };
 }
 
@@ -21,14 +23,14 @@ function writeRemaining(data, resourceType, settings) {
 function writeRuleComponent(resourceTypes, resourceType, adobeResources, settings) {
   for (let rule of adobeResources) {
     settings.reactor.listRuleComponentsForRule(rule.id, pages)
-    .then((adobeRuleComponents) => {
+    .then(({ data: adobeRuleComponents }) => {
       writeRemaining(adobeRuleComponents, resourceType, settings);
     });
   }
 }
 
 function writeRuleComponentOr(resourceTypes, resourceType, adobeResources, settings) {
-  if (resourceType === 'rule' && resourceTypes.includes(ruleComponentsName))
+  if (resourceType === 'rules' && resourceTypes.includes(ruleComponentsName))
     writeRuleComponent(resourceTypes, resourceType, adobeResources, settings);
 }
 

@@ -1,0 +1,3 @@
+{
+  "scopes": "openid,AdobeID,read_organizations,reactor_manage_properties,reactor_manage_environments,reactor_manage_extensions,reactor_manage_rules,reactor_manage_data_elements,reactor_manage_builds,reactor_manage_hosts,reactor_develop"
+}

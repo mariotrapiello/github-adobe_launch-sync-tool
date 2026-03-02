@@ -1,79 +1,211 @@
-# reactor-sync
+# Adobe Launch Reactor Sync
 
-:warning: **This repo is no longer maintained** Due to time constraints, I am no longer maintaining this repository any longer.  I'm archiving it and leaving it read-only so that you can use it as an example of how you might implement something like this on your own.  Feel free to fork and modify it to your needs.
+Bidirectional synchronisation of Adobe Launch (Tags) rules, data elements, and rule components with a Git repository.
 
-Command line tool for syncing data to and from Adobe Launch to a local directory.
+Fork of [adobe/reactor-sync](https://github.com/adobe/reactor-sync) with the following changes:
 
-## Usage
+- **OAuth 2.0 authentication** — the original JWT flow reached end-of-life on March 1, 2026. `bin/utils/getAccessToken.js` has been patched to use the `client_credentials` grant.
+- **Multi-property support** — each Launch property lives under `properties/<name>/` with its own settings file so you can operate on any property independently.
+- **Filtered resource types** — only `data_elements`, `rules`, and `rule_components` are synced; extensions and environments are left untouched.
 
-Before running the sync tool, you must first have [Node.js](https://nodejs.org/en/) installed on your computer. Your npm version (npm comes bundled with Node.js) will need to be at least 10.15.0. You can check the installed version by running the following command from a command line:
-                                                                                                      
-```
-npm -v
-```
+---
 
-You will also need to be authorized to use the Launch APIs. This is done by first creating an integration through Adobe I/O. Please see the [Access Tokens Guide](https://developer.adobelaunch.com/api/guides/access_tokens/) for detailed steps on creating an integration and procuring api access rights.
+## Prerequisites
 
-Finally, you must first have created a property in Adobe Launch to sync with and have a settings file that has all of your integration and environment settings. 
+- Conda environment `prisa` with Node.js 22 (`conda activate prisa`)
+- An Adobe Developer Console project with **OAuth Server-to-Server** credentials and the Experience Platform Launch API added
 
-Once you have a property ready to sync, have a settings file, and have an integraton created through Adobe I/O that can access the Adobe Launch APIs, you can use the bootstrapper tool in either a question-answer format or by passing information through command line arguments.
+---
 
-### Command Line commands
+## One-time setup
 
-There are 2 different commands that this tool comes with:
+### 1. Get credentials from Adobe Developer Console
 
-#### sync
+1. Go to https://developer.adobe.com/console
+2. Open your project (or create one and add the Experience Platform Launch API)
+3. Select **OAuth Server-to-Server** as the credential type
+4. Assign product profiles that have Tags/Launch access
+5. Copy **Client ID**, **Client Secret**, and **Organization ID** from the credential overview
 
-The first command is `sync`.  You can use it as follows:
+### 2. Create `integration.json` (never commit this file)
 
-```
-npx @adobe/reactor-sync sync
-```
+The repo already contains `integration.config.json` (committed) with the non-sensitive configuration (scopes). You only need to create `integration.json` with your credentials:
 
-This is the default command so you can also run this tool without specifying the sync command:
-
-```
-npx @adobe/reactor-sync
-```
-
-This command will first run a diff of what you have on your local machine and then what is in Launch.  It will calculate what it needs to push and what it needs to pull to your local machine.  Then it will performs those operations on your behalf and get them in sync.  
-
-#### diff
-
-The second command is `diff`.  You can use it as follows:
-
-```
-npx @adobe/reactor-sync diff
+```bash
+cat > integration.json << 'EOF'
+{
+  "clientId": "YOUR_CLIENT_ID",
+  "clientSecret": "YOUR_CLIENT_SECRET",
+  "orgId": "XXXXXXXXXXXXXXXX@AdobeOrg"
+}
+EOF
 ```
 
-This command will only run the diff and give you an output of what is different between your local machine and what is in Launch.  It will also give you a better idea of what will happen if you run `sync` before you do so.  
+`integration.json` is gitignored — do not commit it. The scopes are in `integration.config.json` and are applied automatically.
 
-### Command Line Arguments
+### 3. Create the per-property settings file (never commit this file)
 
-The named parameters are as follows:
+For each property you want to work with:
 
-##### --settings-path
+```bash
+cp properties/web-prod/reactor-settings.example.json properties/web-prod/.reactor-settings.json
+```
 
-The location to save the settings.  The file name should end in ".json".  (defaults to ./reactor-settings.json)
+The example file already contains the correct `propertyId` for that property. The `.reactor-settings.json` is gitignored.
 
-## Suggested Uses
+---
 
-This tool can be used in many ways, but here are a few suggested uses:
+## Daily workflow
 
-- If you are already storing the code that goes into Launch in repositories, this tool will be your best friend.  
-  - Set up a git hook whenever you commit or push code to run reactor-sync.
-  - Set up a git app that keeps thins in sync both to and from your repo using this tool.
-- Setup a workflow of pushing code into Launch without having to copy and past manually
-- Run automated tests to ensure that your code doesn't have any obvious errors.
-- Run transpiles on your code automatically and then automatically sync it into Launch.
-- Run linters or code style enforcement tools to ensure that your code is always clean and you can always point to who is writing code in Launch that doesn't stay to standards. 
+All commands run from the **repo root** inside `conda activate prisa`.
 
-If you have other use cases, let me know and I can update this list.
+### Pull — download Launch → local files
 
-### Contributing
+```bash
+node bin/index.js pull --settings-path ./properties/web-prod/.reactor-settings.json
+```
 
-Contributions are welcomed! Read the [Contributing Guide](CONTRIBUTING.md) for more information.
+Creates (or updates) `properties/web-prod/<propertyId>/` with:
 
-## Licensing
+```
+<propertyId>/
+  data_elements/
+    DE0001abc/
+      data.json              ← API snapshot, overwritten on every pull
+      settings.json          ← static configuration (non-code attributes)
+      settings.source.js     ← custom JS code (data elements only)
+    _My Data Element Name -> DE0001abc   (symlink for readability)
+  rules/
+    RL0001abc/
+      data.json
+      settings.json
+    _My Rule Name -> RL0001abc
+  rule_components/
+    RC0001abc/
+      data.json
+      settings.json
+      settings.customCode.js ← custom JS code (rule actions/conditions)
+    _My Rule Component Name -> RC0001abc
+```
 
-This project is licensed under the Apache V2 License. See [LICENSE](LICENSE.md) for more information.
+### Diff — preview what would change
+
+```bash
+node bin/index.js diff --settings-path ./properties/web-prod/.reactor-settings.json
+```
+
+Output categories:
+
+| Category | Meaning |
+|----------|---------|
+| **Modified** | Local file is newer than Launch — your change would be pushed |
+| **Behind** | Launch is newer than local — you need to pull first |
+| **Added** | Exists locally but not in Launch (not yet synced automatically) |
+| **Deleted** | Exists in Launch but not locally |
+| **Unchanged** | In sync |
+
+### Sync — push local changes to Launch
+
+```bash
+node bin/index.js sync --settings-path ./properties/web-prod/.reactor-settings.json
+```
+
+Pushes **Modified** items to Launch and pulls **Behind** items back down.
+
+After sync, **publishing to an environment is a manual step** in the Launch UI:
+> Publishing > Add All Changed Resources > Save and Build for Development
+
+---
+
+## What to edit
+
+| File | When to edit |
+|------|-------------|
+| `settings.source.js` | Custom JavaScript for **data elements** (e.g. a Custom Code data element) |
+| `settings.customCode.js` | Custom JavaScript for **rule components** (e.g. a Custom Code action) |
+| `settings.json` | Non-code configuration (extension-specific settings, flags, field values) |
+| `data.json` | **Never edit** — this is the raw API snapshot and is overwritten on every pull |
+
+**Editing flow:**
+1. Edit `settings.source.js` or `settings.customCode.js` (or `settings.json` for config changes)
+2. Run `diff` to verify the change is detected as **Modified**
+3. Run `sync` to push to Launch
+4. Publish in the Launch UI
+
+---
+
+## Working with multiple properties
+
+### Use an existing property
+
+```bash
+cp properties/web-prod/reactor-settings.example.json properties/<name>/.reactor-settings.json
+# the example already has the correct propertyId — no edits needed
+node bin/index.js pull --settings-path ./properties/<name>/.reactor-settings.json
+```
+
+### Add a new property
+
+```bash
+mkdir properties/<new-name>
+```
+
+Create `properties/<new-name>/reactor-settings.example.json`:
+
+```json
+{
+  "propertyId": "PRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "environment": {
+    "reactorUrl": "https://reactor.adobe.io"
+  }
+}
+```
+
+Then copy to `.reactor-settings.json` and pull:
+
+```bash
+cp properties/<new-name>/reactor-settings.example.json properties/<new-name>/.reactor-settings.json
+node bin/index.js pull --settings-path ./properties/<new-name>/.reactor-settings.json
+```
+
+Commit the `reactor-settings.example.json` (with the real `propertyId`) — it is not sensitive.
+
+---
+
+## CI/CD — GitHub Actions auto-sync
+
+The workflow at `.github/workflows/sync.yml` triggers on every push to `main` that touches `properties/**`. It automatically:
+
+1. Detects which `properties/<name>/` folders changed
+2. Runs `sync --ci` for each changed property
+3. **Aborts with a failed job** if any resource in Launch is more recent than local (i.e. someone changed Launch directly since your last pull) — you must pull, review, commit, and push again
+
+### Required GitHub Secrets
+
+Set these in **GitHub repo Settings > Secrets and variables > Actions**:
+
+| Secret | Value |
+|--------|-------|
+| `ADOBE_CLIENT_ID` | Client ID from Adobe Developer Console |
+| `ADOBE_CLIENT_SECRET` | Client Secret from Adobe Developer Console |
+| `ADOBE_ORG_ID` | Organization ID (format: `XXXXXXXX@AdobeOrg`) |
+
+The `scopes` value is read from the committed `integration.config.json` — no secret needed for it.
+The `propertyId` for each property is read from the committed `reactor-settings.example.json` — no secret needed for it either.
+
+### What the `--ci` flag does
+
+When called with `--ci`, `sync` will:
+- Exit 0 and do nothing if there are no Modified items
+- Exit 0 after syncing if only Modified items exist and none are Behind
+- **Exit 1** if any resource is Behind (Launch was changed after your last pull)
+
+---
+
+## Launch environments
+
+`reactor-sync` manages the **draft/working copy** of resources — it does not interact with Launch's Development, Staging, or Production environments directly. After a sync, your changes exist as drafts in Launch but are not yet deployed to any environment.
+
+Publishing to environments is a **manual step** in the Launch UI.
+
+**If you want full environment separation** (separate CI/CD pipelines for dev/staging/prod), the multi-property structure supports it: create three property folders pointing to three separate Launch properties, add each `reactor-settings.example.json` with its corresponding `propertyId`, and the CI/CD workflow handles each independently based on which folder changed.

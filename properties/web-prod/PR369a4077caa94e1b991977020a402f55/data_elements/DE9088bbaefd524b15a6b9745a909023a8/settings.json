@@ -1,0 +1,3 @@
+{
+  "source": "return {\n  ECID:[\n    {\n      id: _satellite.getVar(\"ECID\"),\n      authenticatedState: \"ambiguous\",\n      primary: false\n    }\n  ],\n  GPM:[\n    {\n      id: _satellite.getVar(\"Profile Id\"),\n      authenticatedState: \"ambiguous\",\n      primary: false\n    }\n  ]\n}"
+}

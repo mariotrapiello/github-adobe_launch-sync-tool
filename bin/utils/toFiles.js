@@ -11,16 +11,21 @@ governing permissions and limitations under the License.
 */
 
 const fs = require('fs');
-const mkdirp = require('mkdirp');
 const sanitize = require('sanitize-filename');
 
+// Use native fs.mkdirSync instead of mkdirp (which became async in v1+).
+// mkdirp was causing a race condition: symlinkSync ran before the async
+// directory creation resolved, producing ENOENT errors.
 function checkCreateDir(localPath) {
-  if (!fs.existsSync(localPath))
-    mkdirp(localPath);
+  fs.mkdirSync(localPath, { recursive: true });
 }
 
 function getLocalPath(data, args) {
-  const propertyPath = `./${args.propertyId}`;
+  // If baseDir is set (from --settings-path), write files next to the settings
+  // file so that properties/web-prod/PR.../... is the output path.
+  // Falls back to ./ for backwards compatibility.
+  const base = args.baseDir || '.';
+  const propertyPath = `${base}/${args.propertyId}`;
   return { 
     'localPath': `${propertyPath}/${data.type}/${data.id}`,
     'localDirectory': `${propertyPath}/${data.type}`
@@ -29,7 +34,7 @@ function getLocalPath(data, args) {
 
 function sanitizeName(data) {
   // create a name that links to the original file
-  if (data.attributes.name) {
+  if (data.attributes && data.attributes.name) {
     return '_' + sanitize(data.attributes.name, {
       replacement: '_'
     });
@@ -37,9 +42,11 @@ function sanitizeName(data) {
 }
 
 function makeSymLink(localDirectory, sanitizedName, data) {
-  if (!fs.existsSync(`${localDirectory}/${sanitizedName}`)) {
-    mkdirp(`${localDirectory}/${sanitizedName}`);
-    fs.symlinkSync(data.id, `${localDirectory}/${sanitizedName}`, 'dir');
+  const symlinkPath = `${localDirectory}/${sanitizedName}`;
+  if (!fs.existsSync(symlinkPath)) {
+    // Ensure parent directory exists synchronously before creating symlink.
+    fs.mkdirSync(localDirectory, { recursive: true });
+    fs.symlinkSync(data.id, symlinkPath, 'dir');
   }
 }
 
@@ -77,7 +84,7 @@ async function toFiles(data, args) {
   writeDataJson(localPath, data);
 
   // if the data has settings, make changes to it
-  if (data.attributes.settings) {
+  if (data.attributes && data.attributes.settings) {
     const settings = getSettings(data, localPath);
 
     if (settings) {

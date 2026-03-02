@@ -10,11 +10,7 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-const fromFile = require('../utils/fromFile');
-const compare = require('./compare');
 const diffDataElements = require('./dataElements');
-const diffEnvironments = require('./environments');
-const diffExtensions = require('./extensions');
 const diffRules = require('./rules');
 const diffRuleComponents = require('./ruleComponents');
 
@@ -27,36 +23,10 @@ module.exports = async (args) => {
     behind: [],
     unchanged: [],
   };
-  const propertyId = args.propertyId;
-  const reactor = args.reactor;
-
-  const propertyPath = `./${propertyId}`;
-
-  // get the local property
-  const local = await fromFile(propertyPath, args);
-  // get the property from launch
-  const remote = (await reactor.getProperty(propertyId)).data;
-
-  // diff the property
-  let comparison = compare(local, remote, result);
-  result[comparison.result]
-  .push({
-    type: local.type,
-    id: local.id,
-    path: propertyPath,
-    details: comparison.details, 
-  });
 
   await Promise.all([
-    // diff data elements
     diffDataElements(args, result),
-    // diff data elements
-    diffEnvironments(args, result),
-    // diff data elements
-    diffExtensions(args, result),
-    // diff data elements
     diffRules(args, result),
-    // diff data elements
     diffRuleComponents(args, result),
   ]);
 

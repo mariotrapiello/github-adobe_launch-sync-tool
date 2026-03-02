@@ -1,0 +1,4 @@
+{
+  "source": "window.responseAEP = event",
+  "language": "javascript"
+}

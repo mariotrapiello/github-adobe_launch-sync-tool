@@ -32,3 +32,12 @@ package-lock.json
 
 # reactor-sync ignores
 .reactor-settings.json
+properties/*/.reactor-settings.json
+
+# shared OAuth 2.0 credentials (never commit)
+# integration.config.json is NOT ignored — it contains non-sensitive config (scopes)
+integration.json
+
+# private key (legacy JWT, kept for reference)
+*.key
+private.key
