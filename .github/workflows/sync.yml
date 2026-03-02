@@ -27,7 +27,7 @@ jobs:
               | grep '^properties/' \
               | cut -d'/' -f2 \
               | sort -u \
-              | jq -R -s 'split("\n") | map(select(length > 0))'
+              | jq -c -R -s 'split("\n") | map(select(length > 0))'
           )
           echo "properties=$CHANGED" >> "$GITHUB_OUTPUT"
           echo "Changed properties: $CHANGED"
