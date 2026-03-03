@@ -2,7 +2,7 @@
   "GPM": [
     {
       "id": "%Profile Id%",
-      "primary": true,
+      "primary": false,
       "authenticatedState": "ambiguous"
     }
   ]

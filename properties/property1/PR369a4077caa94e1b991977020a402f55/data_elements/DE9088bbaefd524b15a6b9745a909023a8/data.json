@@ -4,17 +4,17 @@
   "attributes": {
     "created_at": "2022-08-09T07:13:15.215Z",
     "deleted_at": null,
-    "dirty": false,
+    "dirty": true,
     "enabled": true,
     "name": "identityMap Object - ECID Core",
     "published": false,
     "published_at": null,
     "revision_number": 0,
-    "updated_at": "2026-03-02T13:18:50.179Z",
+    "updated_at": "2026-03-02T18:01:44.461Z",
     "created_by_email": "mario.trapiello@businessmind.es",
     "created_by_display_name": "Mario Trapiello",
-    "updated_by_email": "f4f89f93-75a1-4c5e-9c68-5150362529d4@techacct.adobe.com",
-    "updated_by_display_name": "f4f89f93-75a1-4c5e-9c68-5150362529d4@techacct.adobe.com",
+    "updated_by_email": "mtrapiello@clb.prisamedia.com",
+    "updated_by_display_name": "Mario Trapiello Mendoza",
     "clean_text": false,
     "default_value": null,
     "delegate_descriptor_id": "core::dataElements::custom-code",
@@ -92,6 +92,6 @@
     "extension": "https://reactor.adobe.io/extensions/EX6fdef4942ad54f9b92c6e35e2c4060dc"
   },
   "meta": {
-    "latest_revision_number": 4
+    "latest_revision_number": 5
   }
 }

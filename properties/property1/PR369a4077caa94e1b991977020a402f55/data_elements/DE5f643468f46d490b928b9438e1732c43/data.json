@@ -10,7 +10,7 @@
     "published": false,
     "published_at": null,
     "revision_number": 0,
-    "updated_at": "2026-03-02T17:50:09.104Z",
+    "updated_at": "2026-03-02T18:02:04.963Z",
     "created_by_email": "mario.trapiello@businessmind.es",
     "created_by_display_name": "Mario Trapiello",
     "updated_by_email": "mtrapiello@clb.prisamedia.com",
@@ -21,7 +21,7 @@
     "force_lower_case": false,
     "review_status": "unsubmitted",
     "storage_duration": null,
-    "settings": "{\"GPM\":[{\"id\":\"%Profile Id%\",\"primary\":false,\"authenticatedState\":\"loggedOut\"}]}"
+    "settings": "{\"GPM\":[{\"id\":\"%Profile Id%\",\"primary\":false,\"authenticatedState\":\"ambiguous\"}]}"
   },
   "relationships": {
     "libraries": {
@@ -92,6 +92,6 @@
     "extension": "https://reactor.adobe.io/extensions/EX7cc08de290f4476b89d8cc9b392a755b"
   },
   "meta": {
-    "latest_revision_number": 2
+    "latest_revision_number": 3
   }
 }
