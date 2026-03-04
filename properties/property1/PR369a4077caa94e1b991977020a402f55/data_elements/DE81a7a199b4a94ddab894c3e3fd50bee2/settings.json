@@ -2,8 +2,8 @@
   "GPM": [
     {
       "id": "%Profile Id%",
-      "primary": false,
-      "authenticatedState": "authenticated"
+      "primary": true,
+      "authenticatedState": "unauthenticated"
     }
   ]
 }
