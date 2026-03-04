@@ -54,9 +54,38 @@ EOF
 
 `integration.json` is gitignored — do not commit it. The scopes are in `integration.config.json` and are applied automatically.
 
-### 4. Create the per-property settings file
+### 4. Configure the property settings
 
-Each property folder already contains a committed `reactor-settings.json` with its `propertyId` — no setup needed. This file is not sensitive and is tracked in Git.
+Edit `properties/property1/reactor-settings.json` and replace the placeholder values with your real IDs:
+
+```json
+{
+  "propertyId": "PRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "environment": {
+    "reactorUrl": "https://reactor.adobe.io"
+  },
+  "environmentId": "ENxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+- **`propertyId`** — found in the Adobe Launch UI under your property's **Settings** tab (format: `PRxxxx...`).
+- **`environmentId`** — found under **Environments** in your Launch property. Use the ID of the environment this branch should target (dev, staging, or production). If you are using draft mode only (no auto-publish), remove the `environmentId` line entirely.
+- You can rename the `property1` folder to any meaningful name — just update the path in `.github/workflows/sync.yml` accordingly (`properties/<your-name>/reactor-settings.json`).
+
+Commit `reactor-settings.json` — it contains no secrets, only IDs.
+
+### 5. Do the initial pull
+
+```bash
+node bin/index.js pull --settings-path ./properties/property1/reactor-settings.json
+```
+
+This downloads all resources from your Launch property into `properties/property1/<propertyId>/` and creates the local file structure. Commit the result:
+
+```bash
+git add properties/property1/
+git commit -m "feat: initial pull from Adobe Launch"
+```
 
 ---
 
@@ -297,20 +326,24 @@ The tool detects conflicts before syncing:
 
 This means: if a colleague edits a resource in the Launch UI while you are working locally, your next `sync` will catch the conflict before overwriting their work.
 
-### Branch-per-environment strategy (Example)
+### Branch-per-environment strategy
 
 The tool doesn't care about your git branch names. It only cares about the contents of `reactor-settings.json` in the current checkout. You can use any branching strategy your team prefers.
 
 **Example setup:**
 
 ```
-branch: main     → no environmentId  → draft mode (manual publish in UI)
-branch: dev      → environmentId: EN-dev...      → auto-publishes to Development
-branch: staging  → environmentId: EN-staging...  → auto-publishes to Staging
-branch: prod     → environmentId: EN-prod...     → auto-publishes to Production
+branch: main     → no environmentId          → draft mode (manual publish in UI)
+branch: dev      → environmentId: EN-dev...  → auto-publishes to Development
+branch: staging  → environmentId: EN-stg...  → auto-publishes to Staging
+branch: prod     → environmentId: EN-prd...  → auto-publishes to Production
 ```
 
 A property with 5 development environments would have 5 git branches, each with its corresponding `environmentId`. No central map required.
+
+**`reactor-settings.json` is protected during merges.** The `.gitattributes` file marks it with `merge=ours`, so when you merge dev → staging, git automatically keeps staging's `reactor-settings.json` intact. You never need to manually revert it after a merge.
+
+> **First-time branch setup**: when creating a new branch for an environment, edit `reactor-settings.json` to set the correct `environmentId` and commit it once. After that, merges will never overwrite it.
 
 ---
 
@@ -429,29 +462,37 @@ The `diff` and `sync` commands will automatically detect the presence of the `ex
 
 ## CI/CD — GitHub Actions auto-sync
 
-The workflow at `.github/workflows/sync.yml` runs on every push to any branch. It has two completely separate behaviours depending on the branch name:
+The workflow at `.github/workflows/sync.yml` runs on every push to any branch, but **only when files under `properties/` change**. It uses a single job — no branch name detection.
 
-### dev / main / feature branches — sync job
+### How it works
 
-Triggered only when files inside `properties/` change. It:
+The workflow always calls `sync --ci` for `properties/property1/`. The sync command itself determines what to do by reading `reactor-settings.json` on the current branch and querying the Launch API for the environment type:
 
-1. Checks whether any file under `properties/` changed in the push — skips entirely if not
-2. Runs `sync --ci` for `properties/property1/`
-3. **Aborts with a failed job** if any resource in Launch is more recent than local — you must pull, review, commit, and push again
-4. If `environmentId` is set in `reactor-settings.json`, creates a fresh `git-sync-*` library, adds only your modified resources, and builds it in the dev environment
+| `environmentId` present? | Environment type | What happens |
+| ------------------------- | ---------------- | ------------ |
+| No | — | Draft mode: pushes changes to drafts. No publish. |
+| Yes | `development` | Pushes drafts + creates `git-sync-*` library + dev build. `--ci` aborts if any resource is Behind. |
+| Yes | `staging` | Finds `git-sync-*` library in `development` state → submits → staging build. `--ci` flag ignored. |
+| Yes | `production` | Finds `git-sync-*` library in `submitted` state → approves → final production build. `--ci` flag ignored. |
 
-### staging / prod branches — promote job
+The `--ci` flag only has effect in dev/draft mode — it aborts with a failed job if any resource in Launch is more recent than local (Behind). In staging/prod mode the flag is silently ignored because those flows skip the diff entirely.
 
-Triggered on every push (the merge from the previous branch is the trigger — no file filter needed). It:
+### Branch strategy and `reactor-settings.json` protection
 
-1. Calls `sync` for `properties/property1/` — which **does not touch drafts at all**
-2. Finds the latest `git-sync-*` library in the expected state and promotes it:
-   - **staging**: finds `development` library → submits → builds for staging → stays `submitted`
-   - **prod**: finds `submitted` library → approves → triggers final production build
+Each git branch carries its own `reactor-settings.json` with the `environmentId` of the Launch environment it targets. The file is protected from being overwritten during merges via `.gitattributes` (`merge=ours`), so merging dev → staging never overwrites staging's settings with dev's.
 
-> **Gate rule**: if the expected library is not found, the job prints a warning and exits cleanly. You cannot promote to staging without a prior dev publish, and you cannot promote to production without a prior staging publish.
-> **Blocking rule**: if a `git-sync-*` library is already in `submitted` state when staging runs, it warns and asks you to run prod sync first.
-> **Staging verification**: prod sync checks that the `submitted` library actually went through a staging build. A library manually submitted from the Launch UI without going through staging will be warned and rejected.
+Typical setup:
+
+```
+branch: main     → no environmentId          → draft mode (manual publish in UI)
+branch: dev      → environmentId: EN-dev...  → auto-publishes to Development
+branch: staging  → environmentId: EN-stg...  → auto-publishes to Staging
+branch: prod     → environmentId: EN-prd...  → auto-publishes to Production
+```
+
+Branch names are completely free — the workflow does not read `github.ref_name`. What matters is the `environmentId` in `reactor-settings.json` on whichever branch was pushed.
+
+> **Important**: after cloning or creating a new branch, set the correct `environmentId` in `reactor-settings.json` for that branch and commit it. This is a one-time step per branch.
 
 ### Full promotion workflow across branches
 
@@ -462,16 +503,22 @@ Triggered on every push (the merge from the previous branch is the trigger — n
   → library stays in "development" state
 
 ── merge dev → staging ─────────────────────────────────────
-  CI runs promote job (no file filter)
-  → finds git-sync-* library in "development" state
+  reactor-settings.json keeps staging's environmentId (protected by .gitattributes)
+  CI detects changes in properties/ (the merged files)
+  → sync: finds git-sync-* library in "development" state
   → submits → staging build
   → library is now in "submitted" state (do QA in staging)
 
 ── merge staging → prod ────────────────────────────────────
-  CI runs promote job (no file filter)
-  → finds git-sync-* library in "submitted" state
+  reactor-settings.json keeps prod's environmentId (protected by .gitattributes)
+  CI detects changes in properties/ (the merged files)
+  → sync: finds git-sync-* library in "submitted" state
   → approves → final production build → published
 ```
+
+> **Gate rule**: if the expected library is not found, the job prints a warning and exits cleanly. You cannot promote to staging without a prior dev publish, and you cannot promote to production without a prior staging publish.
+> **Blocking rule**: if a `git-sync-*` library is already in `submitted` state when staging runs, it warns and asks you to run the prod branch first.
+> **Staging verification**: prod sync checks that the `submitted` library actually went through a staging build. A library manually submitted from the Launch UI without going through staging will be warned and skipped.
 
 ### Required GitHub Secrets
 

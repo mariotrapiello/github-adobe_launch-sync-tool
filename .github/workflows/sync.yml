@@ -2,18 +2,24 @@ name: Adobe Launch Sync
 
 # ── Trigger logic ────────────────────────────────────────────────────────────
 #
-#  dev / main (or any non-promotion branch):
-#    Runs only when files inside properties/ change.
-#    Syncs the single property in this repo (properties/property1/).
-#    Pushes local changes to Launch drafts and, if environmentId is set,
-#    creates a git-sync-* library and builds it in the dev environment.
+# Runs on every push to any branch, but only when files under properties/
+# change. A single job calls `sync --ci` for the property.
 #
-#  staging / prod (promotion branches):
-#    Runs on every push (the merge itself is the trigger — no file filter).
-#    Does NOT push local changes to drafts.
-#    Promotes the latest git-sync-* library up the approval chain:
-#      staging → finds the library in "development" state, submits + builds it
-#      prod    → finds the library in "submitted" state, approves + final build
+# The sync command itself determines what to do based on the environmentId
+# in reactor-settings.json and the environment type returned by the Launch API:
+#
+#   No environmentId     → draft mode: push changes to drafts, no publish
+#   environmentId: dev   → push drafts + create git-sync-* library + dev build
+#   environmentId: stage → find git-sync-* library in "development", promote
+#   environmentId: prod  → find git-sync-* library in "submitted", approve + build
+#
+# The --ci flag only has effect in dev/draft mode: it aborts if any resource
+# in Launch is newer than local (Behind). In staging/prod mode the flag is
+# silently ignored because those flows skip the diff entirely.
+#
+# No branch name detection needed — the reactor-settings.json on each branch
+# carries the correct environmentId for that branch's target environment.
+# The file is protected from being overwritten during merges via .gitattributes.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -22,46 +28,7 @@ on:
     branches: ['**']
 
 jobs:
-  # ──────────────────────────────────────────────────────────────────────────
-  # PROMOTION JOB — staging and prod branches only.
-  # Promotes the existing git-sync-* library up the approval chain.
-  # No diff, no draft updates, no file-change detection needed.
-  # ──────────────────────────────────────────────────────────────────────────
-  promote:
-    if: github.ref_name == 'staging' || github.ref_name == 'prod'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Write integration.json
-        run: |
-          jq -n \
-            --arg clientId "${{ secrets.ADOBE_CLIENT_ID }}" \
-            --arg clientSecret "${{ secrets.ADOBE_CLIENT_SECRET }}" \
-            --arg orgId "${{ secrets.ADOBE_ORG_ID }}" \
-            '{"clientId":$clientId,"clientSecret":$clientSecret,"orgId":$orgId}' \
-            > integration.json
-
-      - name: Promote library to ${{ github.ref_name }}
-        run: node bin/index.js sync --settings-path properties/property1/reactor-settings.json
-
-  # ──────────────────────────────────────────────────────────────────────────
-  # SYNC JOB — all other branches (dev, main, feature branches…).
-  # Runs only when files under properties/ change.
-  # Pushes local changes to Launch drafts and, if environmentId is present,
-  # creates a fresh git-sync-* library and builds it in the dev environment.
-  # Aborts with exit 1 if any resource in Launch is newer than local (Behind).
-  # ──────────────────────────────────────────────────────────────────────────
   sync:
-    if: github.ref_name != 'staging' && github.ref_name != 'prod'
     runs-on: ubuntu-latest
 
     steps:
@@ -100,7 +67,8 @@ jobs:
             '{"clientId":$clientId,"clientSecret":$clientSecret,"orgId":$orgId}' \
             > integration.json
 
-      # --ci flag aborts with exit 1 if any resource is Behind (Launch is ahead of local).
+      # --ci aborts with exit 1 if any resource is Behind in dev/draft mode.
+      # In staging/prod mode the flag is ignored — the flow skips diff entirely.
       - name: Sync to Adobe Launch
         if: steps.check.outputs.changed == 'true'
         run: node bin/index.js sync --settings-path properties/property1/reactor-settings.json --ci

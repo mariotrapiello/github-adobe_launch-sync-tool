@@ -1,0 +1,4 @@
+# Prevent reactor-settings.json from being overwritten during merges.
+# Each branch owns its own reactor-settings.json (with its environmentId).
+# When merging branch A into branch B, git always keeps B's version of this file.
+properties/*/reactor-settings.json merge=ours
