@@ -27,7 +27,7 @@ function loadIntegration() {
 }
 
 function checkSettings(args) {
-  const settingsPath = args.settingsPath || './.reactor-settings.json';
+  const settingsPath = args.settingsPath || './reactor-settings.json';
   if (!fs.existsSync(settingsPath)) {
     throw new Error(`Property settings file not found at: ${settingsPath}`);
   }

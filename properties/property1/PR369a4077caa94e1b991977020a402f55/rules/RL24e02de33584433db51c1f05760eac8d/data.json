@@ -1,0 +1,69 @@
+{
+  "id": "RL24e02de33584433db51c1f05760eac8d",
+  "type": "rules",
+  "attributes": {
+    "created_at": "2022-08-23T12:27:16.609Z",
+    "deleted_at": null,
+    "dirty": false,
+    "enabled": true,
+    "name": "Page View Event",
+    "published": true,
+    "published_at": "2026-03-04T10:03:15.190Z",
+    "revision_number": 6,
+    "updated_at": "2022-08-23T12:27:16.677Z",
+    "created_by_email": "mario.trapiello@businessmind.es",
+    "created_by_display_name": "Mario Trapiello",
+    "updated_by_email": "mario.trapiello@businessmind.es",
+    "updated_by_display_name": "Mario Trapiello",
+    "review_status": "unsubmitted"
+  },
+  "relationships": {
+    "libraries": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RL24e02de33584433db51c1f05760eac8d/libraries"
+      }
+    },
+    "revisions": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RL24e02de33584433db51c1f05760eac8d/revisions"
+      }
+    },
+    "notes": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RL24e02de33584433db51c1f05760eac8d/notes"
+      }
+    },
+    "property": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RL24e02de33584433db51c1f05760eac8d/property"
+      },
+      "data": {
+        "id": "PR369a4077caa94e1b991977020a402f55",
+        "type": "properties"
+      }
+    },
+    "origin": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RL24e02de33584433db51c1f05760eac8d/origin"
+      },
+      "data": {
+        "id": "RL6ee46ab6d2d941449ff65867901ca45a",
+        "type": "rules"
+      }
+    },
+    "rule_components": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RL24e02de33584433db51c1f05760eac8d/rule_components"
+      }
+    }
+  },
+  "links": {
+    "property": "https://reactor.adobe.io/properties/PR369a4077caa94e1b991977020a402f55",
+    "origin": "https://reactor.adobe.io/rules/RL6ee46ab6d2d941449ff65867901ca45a",
+    "self": "https://reactor.adobe.io/rules/RL24e02de33584433db51c1f05760eac8d",
+    "rule_components": "https://reactor.adobe.io/rules/RL24e02de33584433db51c1f05760eac8d/rule_components"
+  },
+  "meta": {
+    "latest_revision_number": 6
+  }
+}

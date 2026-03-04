@@ -72,7 +72,7 @@ async function getAccessToken(settings) {
     } catch (_) {}
     throw new Error(
       `Error retrieving access token (OAuth 2.0): ${message}. ` +
-      'Check that clientId, clientSecret and scopes in your .reactor-settings.json are correct.'
+      'Check that clientId, clientSecret and scopes in your reactor-settings.json are correct.'
     );
   }
 }

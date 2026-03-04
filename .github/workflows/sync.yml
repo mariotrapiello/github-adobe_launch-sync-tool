@@ -1,16 +1,76 @@
 name: Adobe Launch Sync
 
+# ── Trigger logic ────────────────────────────────────────────────────────────
+#
+#  dev / main (or any non-promotion branch):
+#    Runs only when files inside properties/ change.
+#    Detects which property folders changed and syncs each one.
+#    Pushes local changes to Launch drafts and, if environmentId is set,
+#    creates a git-sync-* library and builds it in the dev environment.
+#
+#  staging / prod (promotion branches):
+#    Runs on every push (the merge itself is the trigger — no file filter).
+#    Does NOT push local changes to drafts.
+#    Promotes the latest git-sync-* library up the approval chain:
+#      staging → finds the library in "submitted" state, builds + approves it
+#      prod    → finds the library in "approved" state, triggers final build
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
 on:
   push:
-    branches: [main]
-    paths:
-      - 'properties/**'
+    branches: ['**']
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # 1. Detect which properties/<name>/ folders changed in this push
+  # PROMOTION JOB — staging and prod branches only.
+  # Promotes the existing git-sync-* library up the approval chain.
+  # No diff, no draft updates, no file-change detection needed.
+  # ──────────────────────────────────────────────────────────────────────────
+  promote:
+    if: github.ref_name == 'staging' || github.ref_name == 'prod'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write integration.json
+        run: |
+          jq -n \
+            --arg clientId "${{ secrets.ADOBE_CLIENT_ID }}" \
+            --arg clientSecret "${{ secrets.ADOBE_CLIENT_SECRET }}" \
+            --arg orgId "${{ secrets.ADOBE_ORG_ID }}" \
+            '{"clientId":$clientId,"clientSecret":$clientSecret,"orgId":$orgId}' \
+            > integration.json
+
+      # Iterate over every property folder that has a reactor-settings.json
+      # with an environmentId. For staging/prod there is typically one property
+      # per repo, but the loop handles multiple gracefully.
+      - name: Promote library to ${{ github.ref_name }}
+        run: |
+          for settings_file in properties/*/reactor-settings.json; do
+            env_id=$(jq -r '.environmentId // empty' "$settings_file")
+            if [ -n "$env_id" ]; then
+              echo "Promoting property from $settings_file..."
+              node bin/index.js sync --settings-path "$settings_file"
+            else
+              echo "Skipping $settings_file (no environmentId — not in environment mode)"
+            fi
+          done
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # DETECT JOB — all other branches (dev, main, feature branches…).
+  # Finds which properties/<name>/ folders changed in this push.
   # ──────────────────────────────────────────────────────────────────────────
   detect:
+    if: github.ref_name != 'staging' && github.ref_name != 'prod'
     runs-on: ubuntu-latest
     outputs:
       properties: ${{ steps.detect.outputs.properties }}
@@ -33,11 +93,18 @@ jobs:
           echo "Changed properties: $CHANGED"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 2. Sync each changed property to Adobe Launch
+  # SYNC JOB — runs after detect, one matrix entry per changed property.
+  # Pushes local changes to Launch drafts and, if environmentId is present,
+  # creates a fresh git-sync-* library and builds it in the dev environment.
+  # Aborts with exit 1 if any resource in Launch is newer than local (Behind).
   # ──────────────────────────────────────────────────────────────────────────
   sync:
     needs: detect
-    if: ${{ needs.detect.outputs.properties != '[]' && needs.detect.outputs.properties != '' }}
+    if: |
+      github.ref_name != 'staging' &&
+      github.ref_name != 'prod' &&
+      needs.detect.outputs.properties != '[]' &&
+      needs.detect.outputs.properties != ''
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -54,7 +121,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Build integration.json (sensitive credentials only — scopes come from integration.config.json)
       - name: Write integration.json
         run: |
           jq -n \
@@ -64,19 +130,9 @@ jobs:
             '{"clientId":$clientId,"clientSecret":$clientSecret,"orgId":$orgId}' \
             > integration.json
 
-      # Copy the committed example file (which has the real propertyId) to the live settings file
-      - name: Write .reactor-settings.json
-        run: |
-          SETTINGS="properties/${{ matrix.property }}/reactor-settings.example.json"
-          if [ ! -f "$SETTINGS" ]; then
-            echo "ERROR: $SETTINGS not found. Add a reactor-settings.example.json to properties/${{ matrix.property }}/"
-            exit 1
-          fi
-          cp "$SETTINGS" "properties/${{ matrix.property }}/.reactor-settings.json"
-
-      # Sync — aborts with exit 1 if any resource is Behind (Launch is ahead of local)
+      # --ci flag aborts with exit 1 if any resource is Behind (Launch is ahead of local).
       - name: Sync to Adobe Launch
         run: |
           node bin/index.js sync \
-            --settings-path "./properties/${{ matrix.property }}/.reactor-settings.json" \
+            --settings-path "./properties/${{ matrix.property }}/reactor-settings.json" \
             --ci

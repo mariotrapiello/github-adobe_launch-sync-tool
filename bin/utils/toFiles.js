@@ -20,18 +20,6 @@ function checkCreateDir(localPath) {
   fs.mkdirSync(localPath, { recursive: true });
 }
 
-function getLocalPath(data, args) {
-  // If baseDir is set (from --settings-path), write files next to the settings
-  // file so that properties/web-prod/PR.../... is the output path.
-  // Falls back to ./ for backwards compatibility.
-  const base = args.baseDir || '.';
-  const propertyPath = `${base}/${args.propertyId}`;
-  return { 
-    'localPath': `${propertyPath}/${data.type}/${data.id}`,
-    'localDirectory': `${propertyPath}/${data.type}`
-  };
-}
-
 function sanitizeName(data) {
   // create a name that links to the original file
   if (data.attributes && data.attributes.name) {
@@ -41,10 +29,18 @@ function sanitizeName(data) {
   }
 }
 
+function getLocalPath(data, args) {
+  const base = args.baseDir || '.';
+  const propertyPath = `${base}/${args.propertyId}`;
+  return { 
+    'localPath': `${propertyPath}/${data.type}/${data.id}`,
+    'localDirectory': `${propertyPath}/${data.type}`
+  };
+}
+
 function makeSymLink(localDirectory, sanitizedName, data) {
   const symlinkPath = `${localDirectory}/${sanitizedName}`;
   if (!fs.existsSync(symlinkPath)) {
-    // Ensure parent directory exists synchronously before creating symlink.
     fs.mkdirSync(localDirectory, { recursive: true });
     fs.symlinkSync(data.id, symlinkPath, 'dir');
   }
@@ -52,7 +48,7 @@ function makeSymLink(localDirectory, sanitizedName, data) {
 
 function sanitizeLink(data, localDirectory) {
   const sanitizedName = sanitizeName(data);
-  if (sanitizeName(data))
+  if (sanitizedName)
     makeSymLink(localDirectory, sanitizedName, data);
 }
 

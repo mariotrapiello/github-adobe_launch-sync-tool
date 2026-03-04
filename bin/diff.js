@@ -13,17 +13,17 @@ governing permissions and limitations under the License.
 const checkArgs = require('./utils/checkArgs');
 const checkAccessToken = require('./utils/getAccessToken');
 const getReactor = require('./utils/getReactor');
+const getEnvironmentBuildId = require('./utils/getEnvironmentBuildId');
 const diffProperty = require('./diff/property');
 
 module.exports = async (args) => {
-  // Use checkArgs so integration.json + baseDir are loaded consistently
-  // (same as pull.js), instead of reading the settings file a second time.
   const settings = checkArgs(args);
 
-  args.propertyId  = settings.propertyId;
-  args.environment = settings.environment;
-  args.integration = settings.integration;
-  args.baseDir     = settings.baseDir;
+  args.propertyId     = settings.propertyId;
+  args.environment    = settings.environment;
+  args.integration    = settings.integration;
+  args.baseDir        = settings.baseDir;
+  args.environmentId  = settings.environmentId;
 
   if (!args.accessToken) {
     args.accessToken = await checkAccessToken(settings);
@@ -32,6 +32,17 @@ module.exports = async (args) => {
 
   if (!args.reactor) {
     args.reactor = await getReactor(settings);
+  }
+
+  // Environment mode: resolve the most recent succeeded build and attach to args
+  // so diff sub-modules use build-scoped endpoints instead of property drafts.
+  if (settings.environmentId && !args.buildId) {
+    const buildId = await getEnvironmentBuildId(args.reactor, settings.environmentId);
+    if (buildId) {
+      args.buildId = buildId;
+    } else {
+      console.warn(`[WARN] No succeeded build found for environment ${settings.environmentId}. Falling back to draft mode.`);
+    }
   }
 
   const result = await diffProperty(args);

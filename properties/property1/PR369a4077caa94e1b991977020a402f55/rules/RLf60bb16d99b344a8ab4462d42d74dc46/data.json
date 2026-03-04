@@ -1,0 +1,69 @@
+{
+  "id": "RLf60bb16d99b344a8ab4462d42d74dc46",
+  "type": "rules",
+  "attributes": {
+    "created_at": "2022-08-25T08:26:58.649Z",
+    "deleted_at": null,
+    "dirty": false,
+    "enabled": false,
+    "name": "Set IAB TCF Consent",
+    "published": true,
+    "published_at": "2026-03-04T10:03:15.190Z",
+    "revision_number": 10,
+    "updated_at": "2022-08-25T08:26:58.734Z",
+    "created_by_email": "mario.trapiello@businessmind.es",
+    "created_by_display_name": "Mario Trapiello",
+    "updated_by_email": "javier.barrueco@businessmind.es",
+    "updated_by_display_name": "Javier Barrueco Ludeña",
+    "review_status": "unsubmitted"
+  },
+  "relationships": {
+    "libraries": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RLf60bb16d99b344a8ab4462d42d74dc46/libraries"
+      }
+    },
+    "revisions": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RLf60bb16d99b344a8ab4462d42d74dc46/revisions"
+      }
+    },
+    "notes": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RLf60bb16d99b344a8ab4462d42d74dc46/notes"
+      }
+    },
+    "property": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RLf60bb16d99b344a8ab4462d42d74dc46/property"
+      },
+      "data": {
+        "id": "PR369a4077caa94e1b991977020a402f55",
+        "type": "properties"
+      }
+    },
+    "origin": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RLf60bb16d99b344a8ab4462d42d74dc46/origin"
+      },
+      "data": {
+        "id": "RLfaaf7f0d6d624183bc0424040ec71246",
+        "type": "rules"
+      }
+    },
+    "rule_components": {
+      "links": {
+        "related": "https://reactor.adobe.io/rules/RLf60bb16d99b344a8ab4462d42d74dc46/rule_components"
+      }
+    }
+  },
+  "links": {
+    "property": "https://reactor.adobe.io/properties/PR369a4077caa94e1b991977020a402f55",
+    "origin": "https://reactor.adobe.io/rules/RLfaaf7f0d6d624183bc0424040ec71246",
+    "self": "https://reactor.adobe.io/rules/RLf60bb16d99b344a8ab4462d42d74dc46",
+    "rule_components": "https://reactor.adobe.io/rules/RLf60bb16d99b344a8ab4462d42d74dc46/rule_components"
+  },
+  "meta": {
+    "latest_revision_number": 10
+  }
+}

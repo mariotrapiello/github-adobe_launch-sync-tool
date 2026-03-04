@@ -13,6 +13,7 @@ governing permissions and limitations under the License.
 const diffDataElements = require('./dataElements');
 const diffRules = require('./rules');
 const diffRuleComponents = require('./ruleComponents');
+const diffExtensions = require('./extensions');
 
 module.exports = async (args) => {
 
@@ -24,10 +25,13 @@ module.exports = async (args) => {
     unchanged: [],
   };
 
+  // args.buildId is set by diff.js when environmentId is present in reactor-settings.json.
+  // Each sub-module reads args.buildId to choose build-scoped vs. property-scoped endpoints.
   await Promise.all([
     diffDataElements(args, result),
     diffRules(args, result),
     diffRuleComponents(args, result),
+    diffExtensions(args, result),
   ]);
 
   return result;

@@ -1,0 +1,91 @@
+{
+  "id": "RC8f8c14bc58db4b75903254003559a08e",
+  "type": "rule_components",
+  "attributes": {
+    "created_at": "2022-08-24T09:26:05.648Z",
+    "delegate_descriptor_id": "adobe-alloy::actions::set-consent",
+    "deleted_at": null,
+    "dirty": false,
+    "name": "Adobe Experience Platform Web SDK - Redirect with identity",
+    "negate": false,
+    "order": 0,
+    "rule_order": 50,
+    "timeout": 2000,
+    "delay_next": true,
+    "published": true,
+    "published_at": "2026-03-04T10:03:15.190Z",
+    "revision_number": 13,
+    "updated_at": "2022-08-24T09:26:05.648Z",
+    "created_by_email": "mario.trapiello@businessmind.es",
+    "created_by_display_name": "Mario Trapiello",
+    "updated_by_email": "mario.trapiello@businessmind.es",
+    "updated_by_display_name": "Mario Trapiello",
+    "settings": "{\"consent\":[{\"value\":\"%XDM - Consent 2.0%\",\"version\":\"2.0\",\"standard\":\"Adobe\"}],\"instanceName\":\"alloy\"}"
+  },
+  "relationships": {
+    "updated_with_extension_package": {
+      "links": {
+        "related": "https://reactor.adobe.io/rule_components/RC8f8c14bc58db4b75903254003559a08e/updated_with_extension_package"
+      },
+      "data": {
+        "id": "EPb202fa05bc444bd89cf0304678932946",
+        "type": "extension_packages"
+      }
+    },
+    "updated_with_extension": {
+      "links": {
+        "related": "https://reactor.adobe.io/rule_components/RC8f8c14bc58db4b75903254003559a08e/updated_with_extension"
+      },
+      "data": {
+        "id": "EX31c235ab07904e349fb71e6ae2b48362",
+        "type": "extensions"
+      }
+    },
+    "extension": {
+      "links": {
+        "related": "https://reactor.adobe.io/rule_components/RC8f8c14bc58db4b75903254003559a08e/extension"
+      },
+      "data": {
+        "id": "EX7cc08de290f4476b89d8cc9b392a755b",
+        "type": "extensions"
+      }
+    },
+    "notes": {
+      "links": {
+        "related": "https://reactor.adobe.io/rule_components/RC8f8c14bc58db4b75903254003559a08e/notes"
+      }
+    },
+    "origin": {
+      "links": {
+        "related": "https://reactor.adobe.io/rule_components/RC8f8c14bc58db4b75903254003559a08e/origin"
+      },
+      "data": {
+        "id": "RCd3b09ce7092c4b5f9a0e3b56da3f114a",
+        "type": "rule_components"
+      }
+    },
+    "property": {
+      "links": {
+        "related": "https://reactor.adobe.io/properties/PR369a4077caa94e1b991977020a402f55"
+      },
+      "data": {
+        "id": "PR369a4077caa94e1b991977020a402f55",
+        "type": "properties"
+      }
+    },
+    "rules": {
+      "links": {
+        "related": "https://reactor.adobe.io/rule_components/RC8f8c14bc58db4b75903254003559a08e/rules"
+      }
+    }
+  },
+  "links": {
+    "extension": "https://reactor.adobe.io/extensions/EX7cc08de290f4476b89d8cc9b392a755b",
+    "origin": "https://reactor.adobe.io/rule_components/RCd3b09ce7092c4b5f9a0e3b56da3f114a",
+    "rules": "https://reactor.adobe.io/rule_components/RC8f8c14bc58db4b75903254003559a08e/rules",
+    "self": "https://reactor.adobe.io/rule_components/RC8f8c14bc58db4b75903254003559a08e"
+  },
+  "meta": {
+    "latest_revision_number": 13
+  }
+}

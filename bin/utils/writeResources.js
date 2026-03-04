@@ -34,21 +34,40 @@ function writeRuleComponentOr(resourceTypes, resourceType, adobeResources, setti
     writeRuleComponent(resourceTypes, resourceType, adobeResources, settings);
 }
 
-function getPropertyOr(resourceName) {
-  if (resourceName === 'Property') return 'getProperty';
-  return `list${resourceName}ForProperty`;
+// Returns the promise that fetches remote resources for a given type.
+// In environment mode (settings.buildId present) uses build-scoped endpoints;
+// otherwise falls back to property-scoped endpoints (draft mode).
+function fetchResources(settings, resourceName, resourceType) {
+  const reactor = settings.reactor;
+  const buildId = settings.buildId;
+
+  if (buildId) {
+    if (resourceType === 'data_elements') {
+      return reactor.getDataElementsForBuild(buildId).then(r => r.data);
+    }
+    if (resourceType === 'rules') {
+      return reactor.listRulesForBuild(buildId, pages).then(r => r.data);
+    }
+    if (resourceType === 'extensions') {
+      return reactor.listExtensionsForBuild(buildId, pages).then(r => r.data);
+    }
+  }
+
+  // Draft mode fallback
+  const methodName = resourceName === 'Property' ? 'getProperty' : `list${resourceName}ForProperty`;
+  return reactor[methodName](settings.propertyId, pages).then(r => r.data);
+}
+
+function listResources(settings, resourceName, resourceType, resourceTypes) {
+  fetchResources(settings, resourceName, resourceType)
+    .then((adobeResources) =>
+      writeAll(resourceTypes, resourceType, adobeResources, settings)
+    );
 }
 
 function writeAll(resourceTypes, resourceType, adobeResources, settings) {
   writeRuleComponentOr(resourceTypes, resourceType, adobeResources, settings);
   writeRemaining(adobeResources, resourceType, settings);
-}
-
-function listResources(settings, resourceName, resourceType, resourceTypes) {
-  settings.reactor[`${getPropertyOr(resourceName)}`](settings.propertyId, pages)
-  .then(({ data: adobeResources }) => 
-    writeAll(resourceTypes, resourceType, adobeResources, settings)
-  );
 }
 
 function writeResources(resourceTypes, settings) {

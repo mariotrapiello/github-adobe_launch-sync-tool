@@ -6,7 +6,8 @@ Fork of [adobe/reactor-sync](https://github.com/adobe/reactor-sync) with the fol
 
 - **OAuth 2.0 authentication** — the original JWT flow reached end-of-life on March 1, 2026. `bin/utils/getAccessToken.js` has been patched to use the `client_credentials` grant.
 - **Multi-property support** — each Launch property lives under `properties/<name>/` with its own settings file so you can operate on any property independently.
-- **Filtered resource types** — only `data_elements`, `rules`, and `rule_components` are synced; extensions and environments are left untouched.
+- **Filtered resource types** — only `data_elements`, `rules`, and `rule_components` are synced by default; extensions can be enabled with one line (see below).
+- **Two operating modes** — draft mode (pull/diff/sync against Launch drafts) and environment mode (pull/diff/sync against a published environment, with automatic publishing after sync).
 
 ---
 
@@ -31,7 +32,7 @@ This creates the `prisa` environment with Node.js 22 and installs all npm depend
 
 ### 2. Get credentials from Adobe Developer Console
 
-1. Go to https://developer.adobe.com/console
+1. Go to [https://developer.adobe.com/console](https://developer.adobe.com/console)
 2. Open your project (or create one and add the Experience Platform Launch API)
 3. Select **OAuth Server-to-Server** as the credential type
 4. Assign product profiles that have Tags/Launch access
@@ -53,17 +54,263 @@ EOF
 
 `integration.json` is gitignored — do not commit it. The scopes are in `integration.config.json` and are applied automatically.
 
-### 4. Create the per-property settings file (never commit this file)
+### 4. Create the per-property settings file
 
-The repo includes example properties (`property1`, `property2`, ...) — rename them to whatever makes sense for your team (e.g. `web-prod`, `mobile-staging`). The folder name is free — it is only used as a human-readable label.
+Each property folder already contains a committed `reactor-settings.json` with its `propertyId` — no setup needed. This file is not sensitive and is tracked in Git.
 
-For each property you want to work with, copy its example settings file:
+---
 
-```bash
-cp properties/property1/reactor-settings.example.json properties/property1/.reactor-settings.json
+## Operating modes
+
+### Draft mode (default)
+
+In draft mode, `pull`/`diff`/`sync` operate against Launch's working copy (drafts). Publishing to a Launch environment is done manually from the Launch UI.
+
+`reactor-settings.json` (draft mode — `main` branch):
+
+```json
+{
+  "propertyId": "PRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "environment": { "reactorUrl": "https://reactor.adobe.io" }
+}
 ```
 
-The example file already contains the correct `propertyId` for that property. The `.reactor-settings.json` is gitignored.
+### Environment mode
+
+When `reactor-settings.json` contains an `environmentId` field, the tool switches to environment mode:
+
+- **pull** reads resources from the last succeeded build of that environment (not drafts)
+- **diff** compares your local files against the published resources in that environment
+- **sync** pushes changes to drafts first, then automatically creates a library, builds it, and publishes it to the target environment
+
+`reactor-settings.json` (environment mode — `dev`/`staging`/`prod` branch):
+
+```json
+{
+  "propertyId": "PRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "environment": { "reactorUrl": "https://reactor.adobe.io" },
+  "environmentId": "ENxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+#### Finding your environment ID
+
+In the Launch UI: **Environments** tab → click the environment → the URL contains the `EN...` ID. Or use the Reactor API:
+
+```
+GET https://reactor.adobe.io/properties/{propertyId}/environments
+```
+
+#### Publish flow by environment type
+
+The tool mirrors the **single-library promotion flow** of the Launch UI — one library travels through the full dev → staging → production chain. Each Git branch triggers only its own step in that chain:
+
+| Git branch  | Environment type | What `sync` does                                                                                             |
+| ----------- | ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| `dev`       | Development      | Creates a fresh `git-sync-*` library, adds resources, triggers a dev build. Library stays in `development`. |
+| `staging`   | Staging          | Finds the latest `git-sync-*` library in `development` state, submits it, builds for staging. Library stays in `submitted`. |
+| `prod`      | Production       | Finds the latest `git-sync-*` library in `submitted` state, approves it, triggers the final production build.|
+
+> **The gate rule:** If there is no `git-sync-*` library in the expected state, `sync` fails with a clear error. You cannot publish to staging without a prior dev publish, and you cannot publish to production without a prior staging publish.
+>
+> **Blocking rule:** If a `git-sync-*` library is already in `submitted` state when you try to run staging sync, the tool blocks and asks you to run prod sync first. This prevents overwriting a version that is pending production approval.
+
+Build timeout: 120 seconds (polled every 5 s).
+
+#### How the publish flow works internally
+
+Understanding this flow is important if your team also works directly in the Launch UI.
+
+**Development branch**
+
+**Step 1 — Update the draft**
+
+For each modified resource, `sync` updates its draft in Adobe Launch. Because the Reactor API requires resources to have a numbered revision before they can be added to a library, `sync` also calls `revise` after each update. This creates a clean, publishable revision (e.g. `revision_number: 1`).
+
+> **Why IDs change:** Each `revise` call creates a brand-new resource ID in Launch. After a `sync + publish`, the IDs in your local files are stale. Always run `pull` after a successful `sync` to update your local copy to the new IDs from the latest build.
+
+**Step 2 — Create a library and build**
+
+Adobe Launch only allows **one library to be assigned to a given environment at a time**. The dev publish step always creates a **fresh `git-sync-<timestamp>` library** containing only your modified resources:
+
+- If another library already has that environment assigned (e.g. a colleague opened one in the UI), the tool **unlinks the environment from that library** before proceeding. This does **not** delete that library or its resources — it only removes the environment link. The colleague's library is fully preserved.
+- The environment is assigned to the new library and the dev build is triggered.
+
+After a successful build the library stays in `development` state. It is intentionally **not** submitted here — this allows multiple dev syncs to be done freely without "Upstream blocked" conflicts. The submit step happens when the staging branch runs sync.
+
+**Staging branch**
+
+**Step 1 — Find the promoted library**
+
+`sync` searches for the latest `git-sync-*` library in `development` state. If none is found, it exits with an error asking you to publish to development first. If a `git-sync-*` library is already in `submitted` state, it also blocks — you must run prod sync first to clear the pipeline.
+
+**Step 2 — Submit, build for staging**
+
+The library is submitted (moving it out of `development`), the staging environment is assigned, and the staging build is triggered. On success the library stays in `submitted` state — it is **not** approved here. The team does QA in staging, and approval happens in the next step.
+
+**Production branch**
+
+**Step 1 — Find the submitted library**
+
+`sync` searches for the latest `git-sync-*` library in `submitted` state. If none is found, it exits with an error asking you to publish to staging first.
+
+**Step 2 — Approve and final production build**
+
+The library is approved (the QA sign-off, confirming staging was validated), the production environment is assigned, and the final build is triggered. On success the library is fully published.
+
+---
+
+#### Libraries, builds and environments — what you need to know
+
+Adobe Launch's publishing model has some important constraints that affect how this tool works.
+
+**How builds relate to environments**
+
+A `build` is always tied to the library that created it, not to the environment directly. The environment just serves as the deployment target for that build. When you query `GET /environments/{id}/builds`, the API returns builds that were created *targeting* that environment.
+
+**What happens when you delete a library**
+
+If you delete a `git-sync-*` library from the Launch UI:
+- The library and all its builds are permanently removed from the API
+- The environment's deployed script (`launch-xxxxxx-development.min.js`) continues to work on the CDN — it is not deleted
+- But the API loses all reference to the build that generated that script
+- The next `pull` will print `[WARN] No succeeded build found` and fall back to reading drafts instead
+
+**Consequence: do not delete git-sync-* libraries manually**
+
+These libraries are the only record the API has of what is deployed to each environment. If you delete them, the link between the API and the deployed script is lost. The tool will still work (it falls back to draft mode for pull/diff), but:
+- `pull` and `diff` will compare against drafts, not the actual deployed state
+- `sync` will only create a new build when you have at least one locally modified resource
+
+**How to recover from a deleted library**
+
+If you accidentally deleted a library and the environment has no build:
+
+1. Edit any resource locally (even a trivial change like a comment in a `.js` file)
+2. Run `sync` — this will push the change, create a new `git-sync-*` library, build it, and restore the environment state
+3. Run `pull` to refresh your local IDs to match the new build
+
+You cannot restore the build by running `sync` with no local changes, because Adobe's API rejects adding resources that are already "upstream" (already published in a higher environment) to a new dev library.
+
+**Why you see `[REVISE]` logs and what they mean**
+
+When a resource has been published through the promotion chain (dev → staging → prod), its revision becomes frozen (read-only). Adobe's API rejects any `PATCH` on a frozen revision with `409 non-head revisions are frozen`.
+
+The tool handles this automatically with a three-step fallback:
+
+1. **First attempt**: tries to update the resource directly by its local ID.
+2. **If frozen**: finds the latest "head" revision for that resource origin and tries to update that instead.
+3. **If head is also frozen** (e.g. the resource is in a `submitted` or `published` library): calls `revise` to create a brand-new editable draft, then updates and revises it to produce a clean numbered revision.
+
+This is why you may see logs like:
+```
+[REVISE]   Resource DEd155... is frozen. Finding/creating a new draft...
+[REVISE]   Head revision DE5f6... is also locked. Creating new draft...
+[REVISE]   Updating new draft: DEabc...
+[REVISE]   New revision: DEdef...
+```
+This is expected behaviour — the tool is working correctly. The new revision ID is what gets added to the dev library.
+
+**Multiple dev syncs — what happens to old libraries**
+
+You can run dev sync as many times as you want. Each run:
+- Creates a fresh `git-sync-<timestamp>` library with only the resources modified in that sync.
+- If the dev environment was already assigned to an older library, **only the environment link is removed** from that library (the library itself is preserved). The new library then gets the environment assigned.
+
+Old `git-sync-*` libraries in `development` state accumulate over time. They are harmless and can be deleted manually from the Launch UI if desired. The staging sync always picks the **most recently created** one.
+
+**What happens if a library was manually submitted from the Launch UI**
+
+If someone manually clicks "Submit for Approval" on a `git-sync-*` library from the Launch UI (skipping the staging sync), the prod sync will print a warning and exit cleanly:
+
+```
+⚠️  Cannot promote to production: library "git-sync-..." has not been built for a staging environment.
+   Only libraries that went through staging can be promoted to production.
+   Run sync on the staging branch first to build and validate in staging.
+```
+
+To recover: reject or delete that library manually from the Launch UI, then run the staging sync normally to promote the `development` library through the correct flow.
+
+**Note on Launch API state filtering**
+
+The `listLibrariesForProperty` endpoint in the Reactor API does not reliably filter by state server-side. All state filtering (`development`, `submitted`, `approved`, `published`) is applied client-side in the code after fetching the full list. This is a known API limitation.
+
+
+
+A single `git-sync-*` library travels through the full promotion chain:
+
+```
+[dev branch sync]
+  Creates git-sync-<timestamp> library
+  → adds modified resources (revised)
+  → builds for dev environment
+  → library state: development  (stays here — multiple dev syncs allowed)
+
+[staging branch sync]
+  Finds git-sync-* library in development state
+  → submits → library state: submitted
+  → reassigns to staging environment
+  → builds for staging
+  → library state: submitted  (stays here — do QA in staging)
+
+[prod branch sync]
+  Finds git-sync-* library in submitted state
+  → approves → library state: approved
+  → reassigns to prod environment
+  → builds for prod → library state: published
+```
+
+Each environment assignment overwrites the previous one on the library — the library only has one environment at a time. The build records which environment it was built for, so `pull` can still find the correct build for each environment even after the library has been promoted.
+
+---
+
+#### Recommended workflow in environment mode
+
+```
+── dev branch ──────────────────────────────────────────────
+pull          ← get the current published state (1:1 copy)
+  ↓
+edit files    ← modify settings.json / .js files
+  ↓
+diff          ← verify the diff shows Modified (not Behind)
+  ↓
+sync          ← push to drafts + build in dev environment
+  ↓
+pull          ← refresh local IDs to match the new build
+
+── merge dev → staging branch ──────────────────────────────
+sync          ← promotes the library to staging (build + approve)
+
+── merge staging → prod branch ─────────────────────────────
+sync          ← promotes the library to production (final build)
+```
+
+The `pull` after dev sync is important: after publishing, Adobe assigns new revision IDs to all updated resources. Without pulling, subsequent `diff` runs will show those resources as `Added`.
+
+#### What if someone changes Launch directly while I have a library open?
+
+The tool detects conflicts before syncing:
+
+- If a resource in Launch has been updated **after your last pull** (its remote revision is newer than what you have locally), `diff` will mark it as **Behind**.
+- `sync` will not overwrite Behind resources. In CI mode (`--ci`), it exits with an error listing all conflicts.
+- To resolve: run `pull`, review the changes, and push again.
+
+This means: if a colleague edits a resource in the Launch UI while you are working locally, your next `sync` will catch the conflict before overwriting their work.
+
+### Branch-per-environment strategy (Example)
+
+The tool doesn't care about your git branch names. It only cares about the contents of `reactor-settings.json` in the current checkout. You can use any branching strategy your team prefers.
+
+**Example setup:**
+
+```
+branch: main     → no environmentId  → draft mode (manual publish in UI)
+branch: dev      → environmentId: EN-dev...      → auto-publishes to Development
+branch: staging  → environmentId: EN-staging...  → auto-publishes to Staging
+branch: prod     → environmentId: EN-prod...     → auto-publishes to Production
+```
+
+A property with 5 development environments would have 5 git branches, each with its corresponding `environmentId`. No central map required.
 
 ---
 
@@ -74,8 +321,10 @@ All commands run from the **repo root** inside `conda activate prisa`.
 ### Pull — download Launch → local files
 
 ```bash
-node bin/index.js pull --settings-path ./properties/property1/.reactor-settings.json
+node bin/index.js pull --settings-path ./properties/property1/reactor-settings.json
 ```
+
+**Note:** Every time you run `pull`, the local property directory (e.g. `properties/property1/PRxxxx/`) is **deleted and recreated from scratch**. This ensures your local copy is a 1:1 reflection of Adobe Launch, automatically removing any local files for resources that were deleted in the platform.
 
 Creates (or updates) `properties/property1/<propertyId>/` with:
 
@@ -103,40 +352,42 @@ Creates (or updates) `properties/property1/<propertyId>/` with:
 ### Diff — preview what would change
 
 ```bash
-node bin/index.js diff --settings-path ./properties/property1/.reactor-settings.json
+node bin/index.js diff --settings-path ./properties/property1/reactor-settings.json
 ```
 
 Output categories:
 
-| Category | Meaning |
-|----------|---------|
-| **Modified** | Local file is newer than Launch — your change would be pushed |
-| **Behind** | Launch is newer than local — you need to pull first |
-| **Added** | Exists locally but not in Launch (not yet synced automatically) |
-| **Deleted** | Exists in Launch but not locally |
-| **Unchanged** | In sync |
+
+| Category      | Meaning                                                         |
+| ------------- | --------------------------------------------------------------- |
+| **Modified**  | Local file is newer than Launch — your change would be pushed   |
+| **Behind**    | Launch is newer than local — you need to pull first             |
+| **Added**     | Exists locally but not in Launch (not yet synced automatically) |
+| **Deleted**   | Exists in Launch but not locally                                |
+| **Unchanged** | In sync                                                         |
+
 
 ### Sync — push local changes to Launch
 
 ```bash
-node bin/index.js sync --settings-path ./properties/property1/.reactor-settings.json
+node bin/index.js sync --settings-path ./properties/property1/reactor-settings.json
 ```
 
-Pushes **Modified** items to Launch and pulls **Behind** items back down.
-
-After sync, **publishing to an environment is a manual step** in the Launch UI:
-> Publishing > Add All Changed Resources > Save and Build for Development
+- **Draft mode**: pushes Modified items to Launch and pulls Behind items down. Publish manually in the UI afterwards.
+- **Environment mode**: pushes Modified items to drafts, then automatically builds and publishes to the target environment.
 
 ---
 
 ## What to edit
 
-| File | When to edit |
-|------|-------------|
-| `settings.source.js` | Custom JavaScript for **data elements** (Custom Code type). **This is the authoritative source for the code field.** |
+
+| File                     | When to edit                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `settings.source.js`     | Custom JavaScript for **data elements** (Custom Code type). **This is the authoritative source for the code field.**                 |
 | `settings.customCode.js` | Custom JavaScript for **rule components** (Custom Code actions/conditions). **This is the authoritative source for the code field.** |
-| `settings.json` | Non-code configuration fields only — see rule below |
-| `data.json` | **Never edit** — raw API snapshot, overwritten on every pull |
+| `settings.json`          | Non-code configuration fields only — see rule below                                                                                  |
+| `data.json`              | **Never edit** — raw API snapshot, overwritten on every pull                                                                         |
+
 
 ### When both `settings.json` and a `.js` file exist
 
@@ -147,14 +398,32 @@ This happens with Custom Code data elements and rule components. The relationshi
 - **Only edit `settings.json`** when it contains fields that have no corresponding `.js` file (e.g. a timeout, a flag, a non-code value specific to that extension).
 
 **Rule of thumb:**
-- Has a `settings.source.js` or `settings.customCode.js`? → edit the **`.js` file** for code changes, ignore the `source`/`customCode` field in `settings.json`.
+
+- Has a `settings.source.js` or `settings.customCode.js`? → edit the `**.js` file** for code changes, ignore the `source`/`customCode` field in `settings.json`.
 - Only has `settings.json`? → edit `settings.json` directly for any change.
 
 **Editing flow:**
+
 1. Edit the right file (`.js` for code, `settings.json` for non-code fields without a `.js` counterpart)
 2. Run `diff` to verify the change appears as **Modified**
-3. Run `sync` to push to Launch
-4. Publish in the Launch UI
+3. Run `sync` to push to Launch (and auto-publish if in environment mode)
+
+---
+
+## Enabling extensions sync
+
+Extensions are supported in the code but disabled in the download process by default. To enable, uncomment one line in `bin/pull.js`:
+
+```js
+const resourceTypes = [
+  'data_elements',
+  'rules',
+  'rule_components',
+  'extensions',   // ← uncomment this line to start syncing extensions
+];
+```
+
+The `diff` and `sync` commands will automatically detect the presence of the `extensions/` folder and include them in the process.
 
 ---
 
@@ -164,10 +433,10 @@ The folder name under `properties/` is just a label — use whatever name is mea
 
 ### Use an existing property from the repo
 
+The `reactor-settings.json` is already committed with the correct `propertyId` — just pull:
+
 ```bash
-cp properties/property1/reactor-settings.example.json properties/property1/.reactor-settings.json
-# the example already has the correct propertyId — no edits needed
-node bin/index.js pull --settings-path ./properties/property1/.reactor-settings.json
+node bin/index.js pull --settings-path ./properties/property1/reactor-settings.json
 ```
 
 ### Add a new property
@@ -176,62 +445,95 @@ node bin/index.js pull --settings-path ./properties/property1/.reactor-settings.
 mkdir properties/<new-name>
 ```
 
-Create `properties/<new-name>/reactor-settings.example.json`:
+Create `properties/<new-name>/reactor-settings.json`:
 
 ```json
 {
   "propertyId": "PRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "environment": {
     "reactorUrl": "https://reactor.adobe.io"
-  }
+  },
+  "environmentId": "ENxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 }
 ```
 
-Then copy to `.reactor-settings.json` and pull:
+Then pull and commit:
 
 ```bash
-cp properties/<new-name>/reactor-settings.example.json properties/<new-name>/.reactor-settings.json
-node bin/index.js pull --settings-path ./properties/<new-name>/.reactor-settings.json
+node bin/index.js pull --settings-path ./properties/<new-name>/reactor-settings.json
+git add properties/<new-name>/
+git commit -m "feat: add <new-name> property"
 ```
-
-Commit the `reactor-settings.example.json` (with the real `propertyId`) — it is not sensitive.
 
 ---
 
 ## CI/CD — GitHub Actions auto-sync
 
-The workflow at `.github/workflows/sync.yml` triggers on every push to `main` that touches `properties/**`. It automatically:
+The workflow at `.github/workflows/sync.yml` runs on every push to any branch. It has two completely separate behaviours depending on the branch name:
 
-1. Detects which `properties/<name>/` folders changed
+### dev / main / feature branches — sync job
+
+Triggered only when files inside `properties/` change. It:
+
+1. Detects which `properties/<name>/` folders changed in the push
 2. Runs `sync --ci` for each changed property
-3. **Aborts with a failed job** if any resource in Launch is more recent than local (i.e. someone changed Launch directly since your last pull) — you must pull, review, commit, and push again
+3. **Aborts with a failed job** if any resource in Launch is more recent than local — you must pull, review, commit, and push again
+4. If `environmentId` is set in `reactor-settings.json`, creates a fresh `git-sync-*` library, adds only your modified resources, and builds it in the dev environment
+
+### staging / prod branches — promote job
+
+Triggered on every push (the merge from the previous branch is the trigger — no file filter needed). It:
+
+1. Finds every `properties/*/reactor-settings.json` that has an `environmentId`
+2. Calls `sync` for each one — which **does not touch drafts at all**
+3. Instead, it finds the latest `git-sync-*` library in the expected state and promotes it:
+   - **staging**: finds `development` library → submits → builds for staging → stays `submitted`
+   - **prod**: finds `submitted` library → approves → triggers final production build
+
+> **Gate rule**: if the expected library is not found, the job fails with a clear error. You cannot promote to staging without a prior dev publish, and you cannot promote to production without a prior staging publish.
+> **Blocking rule**: if a `git-sync-*` library is already in `submitted` state when staging runs, it blocks and asks you to run prod sync first.
+> **Staging verification**: prod sync checks that the `submitted` library actually went through a staging build. A library manually submitted from the Launch UI without going through staging will be rejected.
+
+### Full promotion workflow across branches
+
+```
+── push to dev branch ──────────────────────────────────────
+  CI detects changes in properties/
+  → sync --ci: push drafts + create git-sync-* library + dev build
+  → library stays in "development" state
+
+── merge dev → staging ─────────────────────────────────────
+  CI runs promote job (no file filter)
+  → finds git-sync-* library in "development" state
+  → submits → staging build
+  → library is now in "submitted" state (do QA in staging)
+
+── merge staging → prod ────────────────────────────────────
+  CI runs promote job (no file filter)
+  → finds git-sync-* library in "submitted" state
+  → approves → final production build → published
+```
 
 ### Required GitHub Secrets
 
 Set these in **GitHub repo Settings > Secrets and variables > Actions**:
 
-| Secret | Value |
-|--------|-------|
-| `ADOBE_CLIENT_ID` | Client ID from Adobe Developer Console |
-| `ADOBE_CLIENT_SECRET` | Client Secret from Adobe Developer Console |
-| `ADOBE_ORG_ID` | Organization ID (format: `XXXXXXXX@AdobeOrg`) |
+
+| Secret                | Value                                         |
+| --------------------- | --------------------------------------------- |
+| `ADOBE_CLIENT_ID`     | Client ID from Adobe Developer Console        |
+| `ADOBE_CLIENT_SECRET` | Client Secret from Adobe Developer Console    |
+| `ADOBE_ORG_ID`        | Organization ID (format: `XXXXXXXX@AdobeOrg`) |
+
 
 The `scopes` value is read from the committed `integration.config.json` — no secret needed for it.
-The `propertyId` for each property is read from the committed `reactor-settings.example.json` — no secret needed for it either.
+The `propertyId` and `environmentId` for each property are read from the committed `reactor-settings.json` — no secrets needed for them either.
 
 ### What the `--ci` flag does
 
-When called with `--ci`, `sync` will:
+Used only on dev/main branches. When called with `--ci`, `sync` will:
+
 - Exit 0 and do nothing if there are no Modified items
 - Exit 0 after syncing if only Modified items exist and none are Behind
 - **Exit 1** if any resource is Behind (Launch was changed after your last pull)
 
----
-
-## Launch environments
-
-`reactor-sync` manages the **draft/working copy** of resources — it does not interact with Launch's Development, Staging, or Production environments directly. After a sync, your changes exist as drafts in Launch but are not yet deployed to any environment.
-
-Publishing to environments is a **manual step** in the Launch UI.
-
-**If you want full environment separation** (separate CI/CD pipelines for dev/staging/prod), the multi-property structure supports it: create three property folders pointing to three separate Launch properties, add each `reactor-settings.example.json` with its corresponding `propertyId`, and the CI/CD workflow handles each independently based on which folder changed.

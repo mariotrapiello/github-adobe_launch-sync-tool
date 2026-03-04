@@ -76,7 +76,7 @@ yargs
 .options({
   'settings-path': {
     type: 'string',
-    describe: 'The location of the .reactor-settings.json file (defaults to ./.reactor-settings.json).'
+    describe: 'The location of the reactor-settings.json file (defaults to ./reactor-settings.json).'
   }
 })
 .options({

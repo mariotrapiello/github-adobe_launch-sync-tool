@@ -17,10 +17,6 @@ const compare = require('./compare');
 
 module.exports = async (args, result) => {
 
-  const spinner = ora('Diffing Extensions \n');
-  spinner.color = 'magenta';
-  spinner.start();
-
   result = result || {
     added: [],
     modified: [],
@@ -30,24 +26,37 @@ module.exports = async (args, result) => {
   };
   const propertyId = args.propertyId;
   const reactor = args.reactor;
-
-  const propertyPath = `./${propertyId}`;
+  const base = args.baseDir || '.';
+  const propertyPath = `${base}/${propertyId}`;
   const extensionsPath = `${propertyPath}/extensions`;
+
+  // If the local directory doesn't exist, skip this resource type entirely.
+  // This avoids reporting all remote resources as "Behind" when the user
+  // intentionally excluded this type from the pull.
+  if (!fs.existsSync(extensionsPath)) {
+    return result;
+  }
+
+  const spinner = ora('Diffing Extensions \n');
+  spinner.color = 'magenta';
+  spinner.start();
 
   // get all of the local files
   const files = fs.readdirSync(extensionsPath);
 
   // get all of the remote objects
-  // TODO: go back through and refactor this to get everything...not just 999
-  const remotes = (
-    await reactor.listExtensionsForProperty(args.propertyId, {
-      'page[size]': 999
-    })
-  ).data;
+  // In environment mode (args.buildId set), read from the published build instead of drafts.
+  const remotes = args.buildId
+    ? (await reactor.listExtensionsForBuild(args.buildId, { 'page[size]': 999 })).data
+    : (await reactor.listExtensionsForProperty(args.propertyId, { 'page[size]': 999 })).data;
+
+  // Track which remote IDs we've already matched during the local loop.
+  const seenIds = new Set();
 
   for (const file of files) {
 
-    // make sure we only deal with directories that start with DE
+    // Only process real ID-based directories; symlinks (starting with _) are
+    // human-readable aliases created by toFiles.js and must not be processed.
     if (!file.startsWith('EX')) {
       continue;
     }
@@ -56,6 +65,7 @@ module.exports = async (args, result) => {
 
     // get the local object from file
     const local = await fromFile(localPath, args);
+    seenIds.add(local.id);
     // get the object from launch
     const remote = remotes.find((remote) => (local.id === remote.id));
 
@@ -75,7 +85,7 @@ module.exports = async (args, result) => {
 
     // we only want to sync things that haven't been handled above.
     // just the remotes that haven't even been created here
-    if (!files.find((id) => (id === remote.id))) {
+    if (!seenIds.has(remote.id)) {
 
       // diff compare
       const comparison = compare(null, remote, result);
