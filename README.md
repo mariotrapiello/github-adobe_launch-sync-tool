@@ -80,12 +80,14 @@ Commit `reactor-settings.json` — it contains no secrets, only IDs.
 node bin/index.js pull --settings-path ./properties/property1/reactor-settings.json
 ```
 
-This downloads all resources from your Launch property into `properties/property1/<propertyId>/` and creates the local file structure. Commit the result:
+This downloads all resources from your Launch property into `properties/property1/<propertyId>/` and creates the local file structure. Commit the result using `[skip ci]` to avoid triggering the CI/CD workflow on this initial import (it would just re-sync what you just pulled):
 
 ```bash
 git add properties/property1/
-git commit -m "feat: initial pull from Adobe Launch"
+git commit -m "feat: initial pull from Adobe Launch [skip ci]"
 ```
+
+> **Before pushing**, make sure the three GitHub Secrets (`ADOBE_CLIENT_ID`, `ADOBE_CLIENT_SECRET`, `ADOBE_ORG_ID`) are set in your repo under **Settings → Secrets and variables → Actions**. Without them, any CI/CD run that tries to sync will fail.
 
 ---
 
