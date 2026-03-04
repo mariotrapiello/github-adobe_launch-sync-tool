@@ -3,7 +3,7 @@
     {
       "id": "%Profile Id%",
       "primary": true,
-      "authenticatedState": "unauthenticated"
+      "authenticatedState": "loggedOut"
     }
   ]
 }
