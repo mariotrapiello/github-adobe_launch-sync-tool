@@ -5,7 +5,7 @@ Bidirectional synchronisation of Adobe Launch (Tags) rules, data elements, and r
 Fork of [adobe/reactor-sync](https://github.com/adobe/reactor-sync) with the following changes:
 
 - **OAuth 2.0 authentication** — the original JWT flow reached end-of-life on March 1, 2026. `bin/utils/getAccessToken.js` has been patched to use the `client_credentials` grant.
-- **Multi-property support** — each Launch property lives under `properties/<name>/` with its own settings file so you can operate on any property independently.
+- **Single-property repo** — one repo per Launch property, under `properties/property1/` with its own settings file.
 - **Filtered resource types** — only `data_elements`, `rules`, and `rule_components` are synced by default; extensions can be enabled with one line (see below).
 - **Two operating modes** — draft mode (pull/diff/sync against Launch drafts) and environment mode (pull/diff/sync against a published environment, with automatic publishing after sync).
 
@@ -427,46 +427,6 @@ The `diff` and `sync` commands will automatically detect the presence of the `ex
 
 ---
 
-## Working with multiple properties
-
-The folder name under `properties/` is just a label — use whatever name is meaningful to your team (`web-prod`, `mobile-staging`, `client-x`, etc.).
-
-### Use an existing property from the repo
-
-The `reactor-settings.json` is already committed with the correct `propertyId` — just pull:
-
-```bash
-node bin/index.js pull --settings-path ./properties/property1/reactor-settings.json
-```
-
-### Add a new property
-
-```bash
-mkdir properties/<new-name>
-```
-
-Create `properties/<new-name>/reactor-settings.json`:
-
-```json
-{
-  "propertyId": "PRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "environment": {
-    "reactorUrl": "https://reactor.adobe.io"
-  },
-  "environmentId": "ENxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-}
-```
-
-Then pull and commit:
-
-```bash
-node bin/index.js pull --settings-path ./properties/<new-name>/reactor-settings.json
-git add properties/<new-name>/
-git commit -m "feat: add <new-name> property"
-```
-
----
-
 ## CI/CD — GitHub Actions auto-sync
 
 The workflow at `.github/workflows/sync.yml` runs on every push to any branch. It has two completely separate behaviours depending on the branch name:
@@ -475,8 +435,8 @@ The workflow at `.github/workflows/sync.yml` runs on every push to any branch. I
 
 Triggered only when files inside `properties/` change. It:
 
-1. Detects which `properties/<name>/` folders changed in the push
-2. Runs `sync --ci` for each changed property
+1. Checks whether any file under `properties/` changed in the push — skips entirely if not
+2. Runs `sync --ci` for `properties/property1/`
 3. **Aborts with a failed job** if any resource in Launch is more recent than local — you must pull, review, commit, and push again
 4. If `environmentId` is set in `reactor-settings.json`, creates a fresh `git-sync-*` library, adds only your modified resources, and builds it in the dev environment
 
@@ -484,15 +444,14 @@ Triggered only when files inside `properties/` change. It:
 
 Triggered on every push (the merge from the previous branch is the trigger — no file filter needed). It:
 
-1. Finds every `properties/*/reactor-settings.json` that has an `environmentId`
-2. Calls `sync` for each one — which **does not touch drafts at all**
-3. Instead, it finds the latest `git-sync-*` library in the expected state and promotes it:
+1. Calls `sync` for `properties/property1/` — which **does not touch drafts at all**
+2. Finds the latest `git-sync-*` library in the expected state and promotes it:
    - **staging**: finds `development` library → submits → builds for staging → stays `submitted`
    - **prod**: finds `submitted` library → approves → triggers final production build
 
-> **Gate rule**: if the expected library is not found, the job fails with a clear error. You cannot promote to staging without a prior dev publish, and you cannot promote to production without a prior staging publish.
-> **Blocking rule**: if a `git-sync-*` library is already in `submitted` state when staging runs, it blocks and asks you to run prod sync first.
-> **Staging verification**: prod sync checks that the `submitted` library actually went through a staging build. A library manually submitted from the Launch UI without going through staging will be rejected.
+> **Gate rule**: if the expected library is not found, the job prints a warning and exits cleanly. You cannot promote to staging without a prior dev publish, and you cannot promote to production without a prior staging publish.
+> **Blocking rule**: if a `git-sync-*` library is already in `submitted` state when staging runs, it warns and asks you to run prod sync first.
+> **Staging verification**: prod sync checks that the `submitted` library actually went through a staging build. A library manually submitted from the Launch UI without going through staging will be warned and rejected.
 
 ### Full promotion workflow across branches
 
