@@ -115,8 +115,13 @@ async function toFiles(data, args) {
             data.relationships.extension_package.data.id
           )).data;
 
-          // transforms
-          transforms = extensionPackage.attributes.configuration.transforms;
+          // transforms (some extension packages have no configuration block)
+          if (
+            extensionPackage.attributes.configuration &&
+            extensionPackage.attributes.configuration.transforms
+          ) {
+            transforms = extensionPackage.attributes.configuration.transforms;
+          }
         }
 
       // rule_components

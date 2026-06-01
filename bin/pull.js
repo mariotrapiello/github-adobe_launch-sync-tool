@@ -11,7 +11,7 @@ const resourceTypes = [
   'data_elements',
   'rules',
   'rule_components',
-  // 'extensions',
+  'extensions',
 ];
 
 function startSpinner() {

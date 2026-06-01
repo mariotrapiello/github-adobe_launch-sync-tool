@@ -5,21 +5,10 @@ name: Adobe Launch Sync
 # Runs on every push to any branch, but only when files under properties/
 # change. A single job calls `sync --ci` for the property.
 #
-# The sync command itself determines what to do based on the environmentId
-# in reactor-settings.json and the environment type returned by the Launch API:
-#
-#   No environmentId     → draft mode: push changes to drafts, no publish
-#   environmentId: dev   → push drafts + create git-sync-* library + dev build
-#   environmentId: stage → find git-sync-* library in "development", promote
-#   environmentId: prod  → find git-sync-* library in "submitted", approve + build
-#
-# The --ci flag only has effect in dev/draft mode: it aborts if any resource
-# in Launch is newer than local (Behind). In staging/prod mode the flag is
-# silently ignored because those flows skip the diff entirely.
-#
-# No branch name detection needed — the reactor-settings.json on each branch
-# carries the correct environmentId for that branch's target environment.
-# The file is protected from being overwritten during merges via .gitattributes.
+# After a successful sync, the workflow automatically performs a `pull`
+# to fetch updated resource IDs from Launch and commits them back to the
+# branch using [skip ci]. This ensures the Git state is always aligned
+# with the remote Launch environment.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -29,6 +18,9 @@ on:
 
 jobs:
   sync:
+    # Explicitly grant write permission so the workflow can push updated IDs back.
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
 
     steps:
@@ -67,8 +59,28 @@ jobs:
             '{"clientId":$clientId,"clientSecret":$clientSecret,"orgId":$orgId}' \
             > integration.json
 
-      # --ci aborts with exit 1 if any resource is Behind in dev/draft mode.
-      # In staging/prod mode the flag is ignored — the flow skips diff entirely.
+      # 1. Sync to Adobe Launch.
+      # --ci flag aborts with exit 1 if any resource is Behind in dev/draft mode.
       - name: Sync to Adobe Launch
         if: steps.check.outputs.changed == 'true'
         run: node bin/index.js sync --settings-path properties/property1/reactor-settings.json --ci
+
+      # 2. Automatically pull updated state (IDs change after sync/publish).
+      - name: Pull updated IDs from Launch
+        if: steps.check.outputs.changed == 'true'
+        run: node bin/index.js pull --settings-path properties/property1/reactor-settings.json
+
+      # 3. Commit and push changes back to the branch.
+      # Use [skip ci] to prevent infinite loops.
+      - name: Commit and push updated IDs
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add properties/
+          if git diff --staged --quiet; then
+            echo "No ID changes to commit."
+          else
+            git commit -m "chore: update resource IDs from Launch [skip ci]"
+            git push
+          fi
